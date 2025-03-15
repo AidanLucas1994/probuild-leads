@@ -939,6 +939,28 @@ select:focus {
     border-color: #4299e1;
 }
 
+/* View Container */
+.view-container > div {
+    display: none;
+}
+
+.view-container > div.active {
+    display: block;
+}
+
+/* Table View */
+.table-view {
+    width: 100%;
+}
+
+/* Cards View */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    padding: 1rem;
+}
+
 /* Cards View */
 .cards-view {
     display: none;
@@ -946,13 +968,6 @@ select:focus {
 
 .cards-view.active {
     display: block;
-}
-
-.cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
-    padding: 1rem;
 }
 
 .lead-card {
