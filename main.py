@@ -71,6 +71,24 @@ except Exception as e:
 def generate_sample_data(num_samples=15):
     """Generate simulated building permit data."""
     project_types = ['Residential', 'Commercial', 'Industrial', 'Renovation']
+    permit_types = [
+        'Residential Building (House)',
+        'Non-Residential Alteration',
+        'Residential Alteration',
+        'Commercial Building'
+    ]
+    work_types = [
+        'New Construction',
+        'Addition to Building',
+        'Interior Alteration',
+        'Exterior Alteration'
+    ]
+    sub_work_types = [
+        'Single Detached Dwelling',
+        'Commercial',
+        'Industrial',
+        'Multi-Unit Residential'
+    ]
     locations = [
         'Toronto, ON', 'Vancouver, BC', 'Montreal, QC', 'Calgary, AB',
         'Ottawa, ON', 'Edmonton, AB', 'Winnipeg, MB', 'Quebec City, QC',
@@ -83,22 +101,62 @@ def generate_sample_data(num_samples=15):
         'CAD $500,000 - $1,000,000',
         'CAD $1,000,000+'
     ]
+    statuses = ['Pending', 'Approved', 'In Review', 'Closed', 'Expired']
+    
+    # City coordinates (approximate centers)
+    city_coords = {
+        'Toronto, ON': (43.6532, -79.3832),
+        'Vancouver, BC': (49.2827, -123.1207),
+        'Montreal, QC': (45.5017, -73.5673),
+        'Calgary, AB': (51.0447, -114.0719),
+        'Ottawa, ON': (45.4215, -75.6972),
+        'Edmonton, AB': (53.5461, -113.4938),
+        'Winnipeg, MB': (49.8951, -97.1384),
+        'Quebec City, QC': (46.8139, -71.2080),
+        'Hamilton, ON': (43.2557, -79.8711),
+        'Victoria, BC': (48.4284, -123.3656),
+        'Halifax, NS': (44.6488, -63.5752),
+        'Saskatoon, SK': (52.1332, -106.6700)
+    }
 
     # Generate random dates within the last 30 days
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
     
     sample_data = []
-    for _ in range(num_samples):
+    for i in range(num_samples):
         random_date = start_date + timedelta(
             seconds=random.randint(0, int((end_date - start_date).total_seconds()))
         )
         
+        location = random.choice(locations)
+        lat, lng = city_coords[location]
+        construction_value = random.uniform(10000, 2000000)
+        
         lead = Lead(
+            permit_number=f"BP{datetime.now().year}{i+1:04d}",
+            permit_type=random.choice(permit_types),
+            permit_status=random.choice(statuses),
             project_type=random.choice(project_types),
-            location=random.choice(locations),
+            work_type=random.choice(work_types),
+            sub_work_type=random.choice(sub_work_types),
+            location=location,
             value_range=random.choice(value_ranges),
-            submission_date=random_date
+            construction_value=construction_value,
+            total_units=str(random.randint(1, 10)),
+            units_created=str(random.randint(0, 5)),
+            units_net_change=random.randint(-2, 5),
+            submission_date=random_date,
+            application_date=random_date - timedelta(days=random.randint(1, 10)),
+            issue_date=random_date + timedelta(days=random.randint(1, 30)),
+            permit_fee=construction_value * 0.01,  # 1% of construction value
+            latitude=lat + random.uniform(-0.01, 0.01),  # Add some random spread
+            longitude=lng + random.uniform(-0.01, 0.01),
+            permit_description=f"Sample permit for {random.choice(work_types).lower()} project",
+            owner=f"Owner {i+1}",
+            applicant=f"Applicant {i+1}",
+            contractor=f"Contractor {i+1}",
+            contractor_contact=f"contact{i+1}@example.com | 555-0{i+1:02d}-{random.randint(1000,9999)}"
         )
         sample_data.append(lead)
     
