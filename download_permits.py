@@ -1,8 +1,9 @@
 import requests
-import pandas as pd
 import logging
 from datetime import datetime
 import os
+import csv
+import io
 
 # Configure logging
 logging.basicConfig(
@@ -22,16 +23,15 @@ def download_building_permits(output_file='kitchener_permits.csv'):
     Returns:
         bool: True if successful, False otherwise
     """
-    # API endpoint URL
-    url = "https://open-kitchenergis.opendata.arcgis.com/datasets/building-permits/explore"
-    api_url = "https://opendata.arcgis.com/datasets/7d567a3bf2a24f39b96cd8c9f811a8ae_0.csv"
-    
     try:
         # Log start of download
-        logger.info(f"Starting download from {api_url}")
+        logger.info("Starting download of building permit data")
         
         # Make the request with a timeout
-        response = requests.get(api_url, timeout=30)
+        response = requests.get(
+            "https://open-kitchenergis.opendata.arcgis.com/datasets/KitchenerGIS::building-permits.csv",
+            timeout=30
+        )
         response.raise_for_status()  # Raise an exception for bad status codes
         
         # Create a backup of existing file if it exists
@@ -45,18 +45,26 @@ def download_building_permits(output_file='kitchener_permits.csv'):
             f.write(response.content)
         
         # Verify the downloaded file
-        df = pd.read_csv(output_file)
-        num_records = len(df)
-        logger.info(f"Successfully downloaded {num_records} building permit records")
-        logger.info(f"Data saved to {output_file}")
-        
-        return True
+        try:
+            with open(output_file, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                headers = next(reader)  # Read headers
+                row_count = sum(1 for row in reader)  # Count rows
+                
+            if row_count == 0:
+                logger.error("Downloaded file is empty")
+                return False
+                
+            logger.info(f"Successfully downloaded {row_count} building permit records")
+            logger.info(f"Data saved to {output_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error reading CSV file: {str(e)}")
+            return False
         
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading data: {str(e)}")
-        return False
-    except pd.errors.EmptyDataError:
-        logger.error("Downloaded file is empty")
         return False
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
@@ -67,6 +75,13 @@ if __name__ == "__main__":
         success = download_building_permits()
         if success:
             logger.info("Script completed successfully")
+            # Now run the cleaning script
+            import clean_permits
+            clean_success = clean_permits.clean_building_permits()
+            if clean_success:
+                logger.info("Data cleaning completed successfully")
+            else:
+                logger.error("Data cleaning failed")
         else:
             logger.error("Script failed to complete successfully")
     except KeyboardInterrupt:

@@ -1,3 +1,7 @@
+# Data files
+*.csv
+*.csv.backup*
+
 # Python
 __pycache__/
 *.py[cod]
@@ -32,5 +36,10 @@ ENV/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 .env 
