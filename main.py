@@ -10,7 +10,10 @@ import logging
 from models import db, Lead
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Get the absolute path of the current directory
@@ -27,15 +30,26 @@ try:
     logger.info(f"Static directory: {static_dir}")
 except Exception as e:
     logger.error(f"Error creating directories: {e}")
-    sys.exit(1)
+    # Don't exit, just log the error
+    logger.warning("Continuing despite directory creation error")
 
 # Initialize Flask app with explicit template and static folder paths
 app = Flask(__name__,
-            template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
+            template_folder=template_dir,
+            static_folder=static_dir)
 
 # Configure SQLAlchemy
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(BASE_DIR, "leads.db")}')
+database_url = os.environ.get('DATABASE_URL')
+if database_url and database_url.startswith('postgres://'):
+    # Render uses postgres:// but SQLAlchemy requires postgresql://
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    logger.info("Using PostgreSQL database")
+else:
+    # Default to SQLite for local development
+    database_url = f'sqlite:///{os.path.join(BASE_DIR, "leads.db")}'
+    logger.info("Using SQLite database")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Use environment variable for secret key with a fallback
@@ -45,6 +59,14 @@ app.debug = os.environ.get('FLASK_ENV') == 'development'
 
 # Initialize the database
 db.init_app(app)
+
+# Create database tables
+try:
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created successfully")
+except Exception as e:
+    logger.error(f"Error creating database tables: {e}")
 
 def generate_sample_data(num_samples=15):
     """Generate simulated building permit data."""
@@ -268,16 +290,7 @@ def health_check():
         'database': 'connected' if db.engine.execute('SELECT 1').scalar() else 'error'
     })
 
-# Create database tables before first request
-@app.before_first_request
-def create_tables():
-    db.create_all()
-
 if __name__ == '__main__':
-    # Create the database tables
-    with app.app_context():
-        db.create_all()
-    
     # Log startup information
     logger.info(f"Starting application in {os.environ.get('FLASK_ENV', 'production')} mode")
     logger.info(f"Template directory exists: {os.path.exists(template_dir)}")
