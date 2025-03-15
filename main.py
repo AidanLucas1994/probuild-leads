@@ -70,93 +70,76 @@ except Exception as e:
 
 def generate_sample_data(num_samples=15):
     """Generate simulated building permit data."""
-    project_types = ['Residential', 'Commercial', 'Industrial', 'Renovation']
-    permit_types = [
+    project_types = [
         'Residential Building (House)',
-        'Non-Residential Alteration',
+        'Commercial Building',
+        'Industrial Building',
         'Residential Alteration',
-        'Commercial Building'
+        'Non-Residential Alteration'
     ]
+    
     work_types = [
         'New Construction',
         'Addition to Building',
         'Interior Alteration',
-        'Exterior Alteration'
+        'Exterior Alteration',
+        'Renovation'
     ]
+    
     sub_work_types = [
         'Single Detached Dwelling',
         'Commercial',
         'Industrial',
-        'Multi-Unit Residential'
+        'Multi-Unit Residential',
+        'Office Building'
     ]
+    
     locations = [
         'Toronto, ON', 'Vancouver, BC', 'Montreal, QC', 'Calgary, AB',
         'Ottawa, ON', 'Edmonton, AB', 'Winnipeg, MB', 'Quebec City, QC',
         'Hamilton, ON', 'Victoria, BC', 'Halifax, NS', 'Saskatoon, SK'
     ]
-    value_ranges = [
-        'CAD $0 - $50,000',
-        'CAD $50,000 - $100,000',
-        'CAD $100,000 - $500,000',
-        'CAD $500,000 - $1,000,000',
-        'CAD $1,000,000+'
-    ]
+    
     statuses = ['Pending', 'Approved', 'In Review', 'Closed', 'Expired']
     
-    # City coordinates (approximate centers)
-    city_coords = {
-        'Toronto, ON': (43.6532, -79.3832),
-        'Vancouver, BC': (49.2827, -123.1207),
-        'Montreal, QC': (45.5017, -73.5673),
-        'Calgary, AB': (51.0447, -114.0719),
-        'Ottawa, ON': (45.4215, -75.6972),
-        'Edmonton, AB': (53.5461, -113.4938),
-        'Winnipeg, MB': (49.8951, -97.1384),
-        'Quebec City, QC': (46.8139, -71.2080),
-        'Hamilton, ON': (43.2557, -79.8711),
-        'Victoria, BC': (48.4284, -123.3656),
-        'Halifax, NS': (44.6488, -63.5752),
-        'Saskatoon, SK': (52.1332, -106.6700)
-    }
-
     # Generate random dates within the last 30 days
     end_date = datetime.now()
     start_date = end_date - timedelta(days=30)
     
     sample_data = []
     for i in range(num_samples):
-        random_date = start_date + timedelta(
+        submission_date = start_date + timedelta(
             seconds=random.randint(0, int((end_date - start_date).total_seconds()))
         )
         
-        location = random.choice(locations)
-        lat, lng = city_coords[location]
-        construction_value = random.uniform(10000, 2000000)
+        # Generate random coordinates in Canada
+        lat = random.uniform(43.0, 50.0)
+        lon = random.uniform(-123.0, -79.0)
+        
+        # Generate random construction value
+        construction_value = random.randint(10000, 2000000)
         
         lead = Lead(
-            permit_number=f"BP{datetime.now().year}{i+1:04d}",
-            permit_type=random.choice(permit_types),
-            permit_status=random.choice(statuses),
+            permit_number=f'BP{datetime.now().year}{i+1:04d}',
             project_type=random.choice(project_types),
+            permit_status=random.choice(statuses),
+            permit_description=f'New {random.choice(sub_work_types).lower()} project',
+            submission_date=submission_date,
+            issue_date=submission_date + timedelta(days=random.randint(5, 15)) if random.random() > 0.3 else None,
+            expiry_date=submission_date + timedelta(days=365),
+            location=random.choice(locations),
             work_type=random.choice(work_types),
             sub_work_type=random.choice(sub_work_types),
-            location=location,
-            value_range=random.choice(value_ranges),
             construction_value=construction_value,
-            total_units=str(random.randint(1, 10)),
-            units_created=str(random.randint(0, 5)),
-            units_net_change=random.randint(-2, 5),
-            submission_date=random_date,
-            application_date=random_date - timedelta(days=random.randint(1, 10)),
-            issue_date=random_date + timedelta(days=random.randint(1, 30)),
-            permit_fee=construction_value * 0.01,  # 1% of construction value
-            latitude=lat + random.uniform(-0.01, 0.01),  # Add some random spread
-            longitude=lng + random.uniform(-0.01, 0.01),
-            permit_description=f"Sample permit for {random.choice(work_types).lower()} project",
-            owner=f"Owner {i+1}",
-            applicant=f"Applicant {i+1}",
-            contractor=f"Contractor {i+1}",
-            contractor_contact=f"contact{i+1}@example.com | 555-0{i+1:02d}-{random.randint(1000,9999)}"
+            total_units=random.randint(1, 10),
+            units_created=random.randint(0, 5),
+            legal_description=f'PLAN {random.randint(1000, 9999)} LOT {random.randint(1, 999)}',
+            latitude=lat,
+            longitude=lon,
+            owner=f'Owner {i+1}',
+            applicant=f'Applicant {i+1}',
+            contractor=f'Contractor {i+1}',
+            contractor_contact=f'contact{i+1}@example.com'
         )
         sample_data.append(lead)
     
@@ -193,7 +176,12 @@ def dashboard():
     # Get filter parameters
     project_type_filter = request.args.get('project_type')
     location_filter = request.args.get('location')
-    value_range_filter = request.args.get('value_range')
+    status_filter = request.args.get('status')
+    work_type_filter = request.args.get('work_type')
+    min_value = request.args.get('min_value', type=float)
+    max_value = request.args.get('max_value', type=float)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
 
     # Start with base query
     query = Lead.query
@@ -203,14 +191,25 @@ def dashboard():
         query = query.filter_by(project_type=project_type_filter)
     if location_filter:
         query = query.filter_by(location=location_filter)
-    if value_range_filter:
-        query = query.filter(Lead.value_range == f"CAD {value_range_filter}")
+    if status_filter:
+        query = query.filter_by(permit_status=status_filter)
+    if work_type_filter:
+        query = query.filter_by(work_type=work_type_filter)
+    if min_value is not None:
+        query = query.filter(Lead.construction_value >= min_value)
+    if max_value is not None:
+        query = query.filter(Lead.construction_value <= max_value)
+    if date_from:
+        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
+    if date_to:
+        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
 
     # Execute query
     filtered_leads = query.order_by(Lead.submission_date.desc()).all()
     
     # If no leads exist, generate and add sample data
-    if not filtered_leads and not any([project_type_filter, location_filter, value_range_filter]):
+    if not filtered_leads and not any([project_type_filter, location_filter, status_filter, 
+                                     work_type_filter, min_value, max_value, date_from, date_to]):
         sample_leads = generate_sample_data()
         for lead in sample_leads:
             db.session.add(lead)
@@ -219,40 +218,49 @@ def dashboard():
 
     # Calculate statistics
     total_leads = len(filtered_leads)
+    total_value = sum(lead.construction_value for lead in filtered_leads)
+    avg_value = total_value / total_leads if total_leads > 0 else 0
     
-    # Extract value ranges and calculate total value
-    total_value = 0
-    for lead in filtered_leads:
-        value_str = lead.value_range.replace('CAD ', '').split('-')[0].strip('$').replace(',', '')
-        if value_str.endswith('+'):
-            value_str = value_str[:-1]
-        total_value += int(value_str)
-    
-    # Count project types
+    # Count by various categories
     project_types = Counter(lead.project_type for lead in filtered_leads)
+    work_types = Counter(lead.work_type for lead in filtered_leads)
+    statuses = Counter(lead.permit_status for lead in filtered_leads)
     
     # Get unique values for filter dropdowns from all leads
     all_leads = Lead.query.all()
     available_filters = {
         'project_types': sorted(set(lead.project_type for lead in all_leads)),
         'locations': sorted(set(lead.location for lead in all_leads)),
-        'value_ranges': sorted(set(lead.value_range.replace('CAD ', '') for lead in all_leads))
+        'statuses': sorted(set(lead.permit_status for lead in all_leads)),
+        'work_types': sorted(set(lead.work_type for lead in all_leads)),
+        'value_range': {
+            'min': min(lead.construction_value for lead in all_leads) if all_leads else 0,
+            'max': max(lead.construction_value for lead in all_leads) if all_leads else 0
+        }
     }
     
     return render_template('dashboard.html',
                          leads=filtered_leads,
                          total_leads=total_leads,
-                         total_value=f"CAD ${total_value:,}",
+                         total_value=f"CAD ${total_value:,.2f}",
+                         avg_value=f"CAD ${avg_value:,.2f}",
                          project_types=dict(project_types),
+                         work_types=dict(work_types),
+                         statuses=dict(statuses),
                          available_filters=available_filters,
                          request=request)
 
 @app.route('/download-csv')
 def download_csv():
-    # Get filter parameters
+    # Get filter parameters (same as dashboard)
     project_type_filter = request.args.get('project_type')
     location_filter = request.args.get('location')
-    value_range_filter = request.args.get('value_range')
+    status_filter = request.args.get('status')
+    work_type_filter = request.args.get('work_type')
+    min_value = request.args.get('min_value', type=float)
+    max_value = request.args.get('max_value', type=float)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
 
     # Start with base query
     query = Lead.query
@@ -262,8 +270,18 @@ def download_csv():
         query = query.filter_by(project_type=project_type_filter)
     if location_filter:
         query = query.filter_by(location=location_filter)
-    if value_range_filter:
-        query = query.filter(Lead.value_range == f"CAD {value_range_filter}")
+    if status_filter:
+        query = query.filter_by(permit_status=status_filter)
+    if work_type_filter:
+        query = query.filter_by(work_type=work_type_filter)
+    if min_value is not None:
+        query = query.filter(Lead.construction_value >= min_value)
+    if max_value is not None:
+        query = query.filter(Lead.construction_value <= max_value)
+    if date_from:
+        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
+    if date_to:
+        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
 
     # Execute query
     filtered_leads = query.order_by(Lead.submission_date.desc()).all()
@@ -273,16 +291,55 @@ def download_csv():
     writer = csv.writer(si)
     
     # Write headers
-    writer.writerow(['Project Type', 'Location', 'Value Range', 'Submission Date'])
+    headers = [
+        'Permit Number',
+        'Project Type',
+        'Status',
+        'Description',
+        'Submission Date',
+        'Issue Date',
+        'Expiry Date',
+        'Location',
+        'Work Type',
+        'Sub Work Type',
+        'Construction Value',
+        'Total Units',
+        'Units Created',
+        'Legal Description',
+        'Latitude',
+        'Longitude',
+        'Owner',
+        'Applicant',
+        'Contractor',
+        'Contractor Contact'
+    ]
+    writer.writerow(headers)
     
     # Write data rows
     for lead in filtered_leads:
-        writer.writerow([
+        row = [
+            lead.permit_number,
             lead.project_type,
+            lead.permit_status,
+            lead.permit_description,
+            lead.submission_date.strftime('%Y-%m-%d %H:%M') if lead.submission_date else '',
+            lead.issue_date.strftime('%Y-%m-%d %H:%M') if lead.issue_date else '',
+            lead.expiry_date.strftime('%Y-%m-%d %H:%M') if lead.expiry_date else '',
             lead.location,
-            lead.value_range,
-            lead.submission_date.strftime('%Y-%m-%d %H:%M')
-        ])
+            lead.work_type,
+            lead.sub_work_type,
+            f"${lead.construction_value:,.2f}" if lead.construction_value else '',
+            lead.total_units,
+            lead.units_created,
+            lead.legal_description,
+            lead.latitude,
+            lead.longitude,
+            lead.owner,
+            lead.applicant,
+            lead.contractor,
+            lead.contractor_contact
+        ]
+        writer.writerow(row)
     
     # Create the response
     output = si.getvalue()
@@ -337,6 +394,11 @@ def api_leads():
         },
         'data': response_data
     })
+
+@app.route('/api/leads/<int:lead_id>')
+def get_lead_details(lead_id):
+    lead = Lead.query.get_or_404(lead_id)
+    return jsonify(lead.to_dict())
 
 @app.route('/health')
 def health_check():
