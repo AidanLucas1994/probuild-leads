@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="form-container">
+        <h1>ProBuild Leads.AI</h1>
+        <form method="POST" action="{{ url_for('index') }}">
+            <div class="form-group">
+                <label for="project_type">Project Type</label>
+                <select id="project_type" name="project_type" required>
+                    <option value="">Select a project type</option>
+                    <option value="Residential">Residential</option>
+                    <option value="Commercial">Commercial</option>
+                    <option value="Industrial">Industrial</option>
+                    <option value="Renovation">Renovation</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="location">Location</label>
+                <input type="text" id="location" name="location" required placeholder="Enter project location">
+            </div>
+
+            <div class="form-group">
+                <label for="value_range">Value Range (CAD)</label>
+                <select id="value_range" name="value_range" required>
+                    <option value="">Select value range</option>
+                    <option value="$0 - $50,000">$0 - $50,000</option>
+                    <option value="$50,000 - $100,000">$50,000 - $100,000</option>
+                    <option value="$100,000 - $500,000">$100,000 - $500,000</option>
+                    <option value="$500,000 - $1,000,000">$500,000 - $1,000,000</option>
+                    <option value="$1,000,000+">$1,000,000+</option>
+                </select>
+            </div>
+
+            <button type="submit" class="submit-btn">Find Leads</button>
+        </form>
+        
+        <div class="view-dashboard">
+            <a href="{{ url_for('dashboard') }}" class="dashboard-link">View Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

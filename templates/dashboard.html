@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard">
+    <nav class="dashboard-nav">
+        <div class="nav-content">
+            <div class="nav-title-group">
+                <div class="nav-title">ProBuild Leads.AI</div>
+                <div class="nav-subtitle">Smarter Leads for Smarter Builders</div>
+            </div>
+            <a href="{{ url_for('index') }}" class="nav-link">Find More Leads</a>
+        </div>
+    </nav>
+
+    <main class="dashboard-content">
+        <div class="page-header">
+            <h1>Leads Dashboard</h1>
+            <p class="header-description">View and filter construction project leads</p>
+        </div>
+
+        <div class="dashboard-header">
+            <h2>Overview Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Submissions</h3>
+                    <div class="stat-value">{{ total_leads }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Value</h3>
+                    <div class="stat-value">{{ total_value }}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Project Types</h3>
+                    <div class="project-counts">
+                        {% for type, count in project_types.items() %}
+                        <span>{{ type }}: {{ count }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-section">
+            <h3>Filter Leads</h3>
+            <p class="filter-description">Refine your leads view using the filters below</p>
+            <form method="GET" action="{{ url_for('dashboard') }}" class="filter-form">
+                <div class="filter-group">
+                    <label for="project_type">Project Type</label>
+                    <select id="project_type" name="project_type" title="Select the type of construction project">
+                        <option value="">All Types</option>
+                        {% for type in available_filters.project_types %}
+                        <option value="{{ type }}" {% if request.args.get('project_type') == type %}selected{% endif %}>
+                            {{ type }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="tooltip">Filter by residential, commercial, industrial, or renovation projects</span>
+                </div>
+
+                <div class="filter-group">
+                    <label for="location">Location</label>
+                    <select id="location" name="location" title="Select the project location">
+                        <option value="">All Locations</option>
+                        {% for location in available_filters.locations %}
+                        <option value="{{ location }}" {% if request.args.get('location') == location %}selected{% endif %}>
+                            {{ location }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="tooltip">Filter by city and province</span>
+                </div>
+
+                <div class="filter-group">
+                    <label for="value_range">Value Range</label>
+                    <select id="value_range" name="value_range" title="Select the construction value range">
+                        <option value="">All Ranges</option>
+                        {% for range in available_filters.value_ranges %}
+                        <option value="{{ range }}" {% if request.args.get('value_range') == range %}selected{% endif %}>
+                            {{ range }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="tooltip">Filter by project budget range (CAD)</span>
+                </div>
+
+                <div class="filter-actions">
+                    <button type="submit" class="filter-btn" title="Apply selected filters">Apply Filters</button>
+                    <a href="{{ url_for('dashboard') }}" class="reset-btn" title="Clear all filters">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="table-section">
+            <div class="table-header">
+                <h3>Leads Overview</h3>
+                <a href="{{ url_for('download_csv') }}{% if request.args %}?{{ request.query_string.decode() }}{% endif %}" 
+                   class="download-btn" 
+                   title="Download current leads as CSV file">
+                    <svg class="download-icon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                        <path d="M10 12l-5-5 1.41-1.41L10 9.17l3.59-3.58L15 7l-5 5z"/>
+                        <path d="M4 14h12v2H4z"/>
+                    </svg>
+                    Download CSV
+                </a>
+            </div>
+            <div class="table-container">
+                <table class="leads-table">
+                    <thead>
+                        <tr>
+                            <th>Project Type</th>
+                            <th>Location</th>
+                            <th>Value Range</th>
+                            <th>Submission Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in leads %}
+                        <tr>
+                            <td>
+                                <span class="project-badge project-{{ lead.project_type.lower() }}">
+                                    {{ lead.project_type }}
+                                </span>
+                            </td>
+                            <td>{{ lead.location }}</td>
+                            <td>{{ lead.value_range }}</td>
+                            <td>{{ lead.submission_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %} 
