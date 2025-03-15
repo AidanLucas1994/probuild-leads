@@ -7,6 +7,7 @@ import io
 import os
 import sys
 import logging
+from models import db, Lead
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,13 +34,17 @@ app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
 
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(BASE_DIR, "leads.db")}')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 # Use environment variable for secret key with a fallback
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-please-change-in-production')
 # Disable debug mode in production
 app.debug = os.environ.get('FLASK_ENV') == 'development'
 
-# Store submissions in memory (replace with database in production)
-leads = []
+# Initialize the database
+db.init_app(app)
 
 def generate_sample_data(num_samples=15):
     """Generate simulated building permit data."""
@@ -67,16 +72,15 @@ def generate_sample_data(num_samples=15):
             seconds=random.randint(0, int((end_date - start_date).total_seconds()))
         )
         
-        lead = {
-            'project_type': random.choice(project_types),
-            'location': random.choice(locations),
-            'value_range': random.choice(value_ranges),
-            'submission_date': random_date
-        }
+        lead = Lead(
+            project_type=random.choice(project_types),
+            location=random.choice(locations),
+            value_range=random.choice(value_ranges),
+            submission_date=random_date
+        )
         sample_data.append(lead)
     
-    # Sort by submission date, most recent first
-    return sorted(sample_data, key=lambda x: x['submission_date'], reverse=True)
+    return sample_data
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -89,14 +93,16 @@ def index():
             flash('All fields are required!', 'error')
             return redirect(url_for('index'))
 
-        # Create a new lead with CAD prefix
-        lead = {
-            'project_type': project_type,
-            'location': location,
-            'value_range': f"CAD {value_range}",
-            'submission_date': datetime.now()
-        }
-        leads.append(lead)
+        # Create a new lead
+        lead = Lead(
+            project_type=project_type,
+            location=location,
+            value_range=f"CAD {value_range}",
+            submission_date=datetime.now()
+        )
+        db.session.add(lead)
+        db.session.commit()
+
         flash('Lead submitted successfully!', 'success')
         return redirect(url_for('dashboard'))
 
@@ -104,47 +110,53 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    global leads
-    
-    # If no leads exist, generate sample data
-    if not leads:
-        leads = generate_sample_data()
-
     # Get filter parameters
     project_type_filter = request.args.get('project_type')
     location_filter = request.args.get('location')
     value_range_filter = request.args.get('value_range')
 
-    # Apply filters
-    filtered_leads = leads
-    if project_type_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['project_type'] == project_type_filter]
-    if location_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['location'] == location_filter]
-    if value_range_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['value_range'].replace('CAD ', '') == value_range_filter]
+    # Start with base query
+    query = Lead.query
 
-    # Calculate statistics based on filtered leads
+    # Apply filters
+    if project_type_filter:
+        query = query.filter_by(project_type=project_type_filter)
+    if location_filter:
+        query = query.filter_by(location=location_filter)
+    if value_range_filter:
+        query = query.filter(Lead.value_range == f"CAD {value_range_filter}")
+
+    # Execute query
+    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
+    
+    # If no leads exist, generate and add sample data
+    if not filtered_leads and not any([project_type_filter, location_filter, value_range_filter]):
+        sample_leads = generate_sample_data()
+        for lead in sample_leads:
+            db.session.add(lead)
+        db.session.commit()
+        filtered_leads = Lead.query.order_by(Lead.submission_date.desc()).all()
+
+    # Calculate statistics
     total_leads = len(filtered_leads)
     
-    # Extract value ranges and calculate total value (using minimum values)
+    # Extract value ranges and calculate total value
     total_value = 0
     for lead in filtered_leads:
-        # Remove 'CAD' prefix and handle the rest of the string
-        value_str = lead['value_range'].replace('CAD ', '').split('-')[0].strip('$').replace(',', '')
-        # Handle the special case of "1000000+"
+        value_str = lead.value_range.replace('CAD ', '').split('-')[0].strip('$').replace(',', '')
         if value_str.endswith('+'):
-            value_str = value_str[:-1]  # Remove the '+' symbol
+            value_str = value_str[:-1]
         total_value += int(value_str)
     
-    # Count project types from filtered leads
-    project_types = Counter(lead['project_type'] for lead in filtered_leads)
+    # Count project types
+    project_types = Counter(lead.project_type for lead in filtered_leads)
     
-    # Get unique values for filter dropdowns
+    # Get unique values for filter dropdowns from all leads
+    all_leads = Lead.query.all()
     available_filters = {
-        'project_types': sorted(set(lead['project_type'] for lead in leads)),
-        'locations': sorted(set(lead['location'] for lead in leads)),
-        'value_ranges': sorted(set(lead['value_range'].replace('CAD ', '') for lead in leads))
+        'project_types': sorted(set(lead.project_type for lead in all_leads)),
+        'locations': sorted(set(lead.location for lead in all_leads)),
+        'value_ranges': sorted(set(lead.value_range.replace('CAD ', '') for lead in all_leads))
     }
     
     return render_template('dashboard.html',
@@ -162,14 +174,19 @@ def download_csv():
     location_filter = request.args.get('location')
     value_range_filter = request.args.get('value_range')
 
-    # Apply filters (same logic as dashboard route)
-    filtered_leads = leads
+    # Start with base query
+    query = Lead.query
+
+    # Apply filters
     if project_type_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['project_type'] == project_type_filter]
+        query = query.filter_by(project_type=project_type_filter)
     if location_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['location'] == location_filter]
+        query = query.filter_by(location=location_filter)
     if value_range_filter:
-        filtered_leads = [lead for lead in filtered_leads if lead['value_range'].replace('CAD ', '') == value_range_filter]
+        query = query.filter(Lead.value_range == f"CAD {value_range_filter}")
+
+    # Execute query
+    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
 
     # Create a StringIO object to write CSV data
     si = io.StringIO()
@@ -181,10 +198,10 @@ def download_csv():
     # Write data rows
     for lead in filtered_leads:
         writer.writerow([
-            lead['project_type'],
-            lead['location'],
-            lead['value_range'],
-            lead['submission_date'].strftime('%Y-%m-%d %H:%M')
+            lead.project_type,
+            lead.location,
+            lead.value_range,
+            lead.submission_date.strftime('%Y-%m-%d %H:%M')
         ])
     
     # Create the response
@@ -206,29 +223,28 @@ def download_csv():
 
 @app.route('/api/leads')
 def api_leads():
-    global leads
-    
-    # If no leads exist, generate sample data
-    if not leads:
-        leads = generate_sample_data()
-    
     # Get filter parameters from query string
     project_type = request.args.get('project_type')
     location = request.args.get('location')
     
+    # Start with base query
+    query = Lead.query
+
     # Apply filters
-    filtered_leads = leads
     if project_type:
-        filtered_leads = [lead for lead in filtered_leads if lead['project_type'] == project_type]
+        query = query.filter_by(project_type=project_type)
     if location:
-        filtered_leads = [lead for lead in filtered_leads if lead['location'] == location]
+        query = query.filter_by(location=location)
+
+    # Execute query
+    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
     
     # Format the response data
     response_data = [{
-        'project_type': lead['project_type'],
-        'location': lead['location'],
-        'construction_value': lead['value_range'],
-        'permit_date': lead['submission_date'].strftime('%Y-%m-%d %H:%M'),
+        'project_type': lead.project_type,
+        'location': lead.location,
+        'construction_value': lead.value_range,
+        'permit_date': lead.submission_date.strftime('%Y-%m-%d %H:%M'),
     } for lead in filtered_leads]
     
     # Return JSON response with metadata
@@ -248,10 +264,20 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'template_dir': os.path.exists(template_dir),
-        'static_dir': os.path.exists(static_dir)
+        'static_dir': os.path.exists(static_dir),
+        'database': 'connected' if db.engine.execute('SELECT 1').scalar() else 'error'
     })
 
+# Create database tables before first request
+@app.before_first_request
+def create_tables():
+    db.create_all()
+
 if __name__ == '__main__':
+    # Create the database tables
+    with app.app_context():
+        db.create_all()
+    
     # Log startup information
     logger.info(f"Starting application in {os.environ.get('FLASK_ENV', 'production')} mode")
     logger.info(f"Template directory exists: {os.path.exists(template_dir)}")
