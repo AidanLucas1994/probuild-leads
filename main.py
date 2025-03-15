@@ -8,6 +8,8 @@ import os
 import sys
 import logging
 from models import db, Lead
+import pandas as pd
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -173,190 +175,127 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    # Get filter parameters
-    project_type_filter = request.args.get('project_type')
-    location_filter = request.args.get('location')
-    status_filter = request.args.get('status')
-    work_type_filter = request.args.get('work_type')
-    min_value = request.args.get('min_value', type=float)
-    max_value = request.args.get('max_value', type=float)
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
+    try:
+        # Read the cleaned CSV file
+        df = pd.read_csv('cleaned_kitchener_permits.csv')
+        
+        # Apply filters from query parameters
+        project_type = request.args.get('project_type')
+        location = request.args.get('location')
+        status = request.args.get('status')
+        work_type = request.args.get('work_type')
+        min_value = request.args.get('min_value', type=float)
+        max_value = request.args.get('max_value', type=float)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
 
-    # Start with base query
-    query = Lead.query
+        # Convert date columns to datetime
+        df['submission_date'] = pd.to_datetime(df['submission_date'])
+        
+        # Apply filters if they exist
+        if project_type:
+            df = df[df['project_type'] == project_type]
+        if location:
+            df = df[df['location'].str.contains(location, case=False, na=False)]
+        if status:
+            df = df[df['permit_status'] == status]
+        if work_type:
+            df = df[df['work_type'] == work_type]
+        if min_value:
+            df = df[df['construction_value'] >= min_value]
+        if max_value:
+            df = df[df['construction_value'] <= max_value]
+        if date_from:
+            df = df[df['submission_date'] >= date_from]
+        if date_to:
+            df = df[df['submission_date'] <= date_to]
 
-    # Apply filters
-    if project_type_filter:
-        query = query.filter_by(project_type=project_type_filter)
-    if location_filter:
-        query = query.filter_by(location=location_filter)
-    if status_filter:
-        query = query.filter_by(permit_status=status_filter)
-    if work_type_filter:
-        query = query.filter_by(work_type=work_type_filter)
-    if min_value is not None:
-        query = query.filter(Lead.construction_value >= min_value)
-    if max_value is not None:
-        query = query.filter(Lead.construction_value <= max_value)
-    if date_from:
-        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
-    if date_to:
-        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
+        # Calculate statistics
+        total_leads = len(df)
+        total_value = f"${df['construction_value'].sum():,.2f}"
+        avg_value = f"${df['construction_value'].mean():,.2f}"
 
-    # Execute query
-    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
-    
-    # If no leads exist, generate and add sample data
-    if not filtered_leads and not any([project_type_filter, location_filter, status_filter, 
-                                     work_type_filter, min_value, max_value, date_from, date_to]):
-        sample_leads = generate_sample_data()
-        for lead in sample_leads:
-            db.session.add(lead)
-        db.session.commit()
-        filtered_leads = Lead.query.order_by(Lead.submission_date.desc()).all()
-
-    # Calculate statistics
-    total_leads = len(filtered_leads)
-    total_value = sum(lead.construction_value for lead in filtered_leads)
-    avg_value = total_value / total_leads if total_leads > 0 else 0
-    
-    # Count by various categories
-    project_types = Counter(lead.project_type for lead in filtered_leads)
-    work_types = Counter(lead.work_type for lead in filtered_leads)
-    statuses = Counter(lead.permit_status for lead in filtered_leads)
-    
-    # Get unique values for filter dropdowns from all leads
-    all_leads = Lead.query.all()
-    available_filters = {
-        'project_types': sorted(set(lead.project_type for lead in all_leads)),
-        'locations': sorted(set(lead.location for lead in all_leads)),
-        'statuses': sorted(set(lead.permit_status for lead in all_leads)),
-        'work_types': sorted(set(lead.work_type for lead in all_leads)),
-        'value_range': {
-            'min': min(lead.construction_value for lead in all_leads) if all_leads else 0,
-            'max': max(lead.construction_value for lead in all_leads) if all_leads else 0
+        # Get unique values for filters
+        available_filters = {
+            'project_types': sorted(df['project_type'].unique().tolist()),
+            'locations': sorted(df['location'].unique().tolist()),
+            'statuses': sorted(df['permit_status'].unique().tolist()),
+            'work_types': sorted(df['work_type'].unique().tolist()),
+            'value_range': {
+                'min': df['construction_value'].min(),
+                'max': df['construction_value'].max()
+            }
         }
-    }
-    
-    return render_template('dashboard.html',
-                         leads=filtered_leads,
-                         total_leads=total_leads,
-                         total_value=f"CAD ${total_value:,.2f}",
-                         avg_value=f"CAD ${avg_value:,.2f}",
-                         project_types=dict(project_types),
-                         work_types=dict(work_types),
-                         statuses=dict(statuses),
-                         available_filters=available_filters,
-                         request=request)
+
+        # Calculate statistics by category
+        project_types = df['project_type'].value_counts().to_dict()
+        work_types = df['work_type'].value_counts().to_dict()
+        statuses = df['permit_status'].value_counts().to_dict()
+
+        # Convert DataFrame to list of dictionaries for template
+        leads = df.to_dict('records')
+
+        return render_template('dashboard.html',
+                             leads=leads,
+                             total_leads=total_leads,
+                             total_value=total_value,
+                             avg_value=avg_value,
+                             project_types=project_types,
+                             work_types=work_types,
+                             statuses=statuses,
+                             available_filters=available_filters)
+
+    except FileNotFoundError:
+        flash('No permit data found. Please ensure the data file exists.', 'error')
+        return render_template('dashboard.html', leads=[])
+    except Exception as e:
+        flash(f'Error loading dashboard: {str(e)}', 'error')
+        return render_template('dashboard.html', leads=[])
 
 @app.route('/download-csv')
 def download_csv():
-    # Get filter parameters (same as dashboard)
-    project_type_filter = request.args.get('project_type')
-    location_filter = request.args.get('location')
-    status_filter = request.args.get('status')
-    work_type_filter = request.args.get('work_type')
-    min_value = request.args.get('min_value', type=float)
-    max_value = request.args.get('max_value', type=float)
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
+    try:
+        # Apply filters from query parameters
+        df = pd.read_csv('cleaned_kitchener_permits.csv')
+        
+        # Apply the same filters as the dashboard
+        project_type = request.args.get('project_type')
+        location = request.args.get('location')
+        status = request.args.get('status')
+        work_type = request.args.get('work_type')
+        min_value = request.args.get('min_value', type=float)
+        max_value = request.args.get('max_value', type=float)
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
 
-    # Start with base query
-    query = Lead.query
+        if project_type:
+            df = df[df['project_type'] == project_type]
+        if location:
+            df = df[df['location'].str.contains(location, case=False, na=False)]
+        if status:
+            df = df[df['permit_status'] == status]
+        if work_type:
+            df = df[df['work_type'] == work_type]
+        if min_value:
+            df = df[df['construction_value'] >= min_value]
+        if max_value:
+            df = df[df['construction_value'] <= max_value]
+        if date_from:
+            df = df[df['submission_date'] >= date_from]
+        if date_to:
+            df = df[df['submission_date'] <= date_to]
 
-    # Apply filters
-    if project_type_filter:
-        query = query.filter_by(project_type=project_type_filter)
-    if location_filter:
-        query = query.filter_by(location=location_filter)
-    if status_filter:
-        query = query.filter_by(permit_status=status_filter)
-    if work_type_filter:
-        query = query.filter_by(work_type=work_type_filter)
-    if min_value is not None:
-        query = query.filter(Lead.construction_value >= min_value)
-    if max_value is not None:
-        query = query.filter(Lead.construction_value <= max_value)
-    if date_from:
-        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
-    if date_to:
-        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
-
-    # Execute query
-    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
-
-    # Create a StringIO object to write CSV data
-    si = io.StringIO()
-    writer = csv.writer(si)
-    
-    # Write headers
-    headers = [
-        'Permit Number',
-        'Project Type',
-        'Status',
-        'Description',
-        'Submission Date',
-        'Issue Date',
-        'Expiry Date',
-        'Location',
-        'Work Type',
-        'Sub Work Type',
-        'Construction Value',
-        'Total Units',
-        'Units Created',
-        'Legal Description',
-        'Latitude',
-        'Longitude',
-        'Owner',
-        'Applicant',
-        'Contractor',
-        'Contractor Contact'
-    ]
-    writer.writerow(headers)
-    
-    # Write data rows
-    for lead in filtered_leads:
-        row = [
-            lead.permit_number,
-            lead.project_type,
-            lead.permit_status,
-            lead.permit_description,
-            lead.submission_date.strftime('%Y-%m-%d %H:%M') if lead.submission_date else '',
-            lead.issue_date.strftime('%Y-%m-%d %H:%M') if lead.issue_date else '',
-            lead.expiry_date.strftime('%Y-%m-%d %H:%M') if lead.expiry_date else '',
-            lead.location,
-            lead.work_type,
-            lead.sub_work_type,
-            f"${lead.construction_value:,.2f}" if lead.construction_value else '',
-            lead.total_units,
-            lead.units_created,
-            lead.legal_description,
-            lead.latitude,
-            lead.longitude,
-            lead.owner,
-            lead.applicant,
-            lead.contractor,
-            lead.contractor_contact
-        ]
-        writer.writerow(row)
-    
-    # Create the response
-    output = si.getvalue()
-    si.close()
-    
-    # Create a new StringIO object with the output
-    mem = io.BytesIO()
-    mem.write(output.encode('utf-8'))
-    mem.seek(0)
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    return send_file(
-        mem,
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name=f'construction_leads_{timestamp}.csv'
-    )
+        # Create a temporary file for download
+        temp_file = 'filtered_permits.csv'
+        df.to_csv(temp_file, index=False)
+        
+        return send_file(temp_file,
+                        mimetype='text/csv',
+                        as_attachment=True,
+                        download_name='filtered_permits.csv')
+    except Exception as e:
+        flash(f'Error downloading CSV: {str(e)}', 'error')
+        return redirect(url_for('dashboard'))
 
 @app.route('/api/leads')
 def api_leads():
@@ -397,8 +336,12 @@ def api_leads():
 
 @app.route('/api/leads/<int:lead_id>')
 def get_lead_details(lead_id):
-    lead = Lead.query.get_or_404(lead_id)
-    return jsonify(lead.to_dict())
+    try:
+        df = pd.read_csv('cleaned_kitchener_permits.csv')
+        lead = df[df['permit_number'] == lead_id].to_dict('records')[0]
+        return jsonify(lead)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
 
 @app.route('/health')
 def health_check():
