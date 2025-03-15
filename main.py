@@ -7,7 +7,10 @@ import io
 import os
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Required for flash messages
+# Use environment variable for secret key with a fallback
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-please-change-in-production')
+# Disable debug mode in production
+app.debug = os.environ.get('FLASK_ENV') == 'development'
 
 # Store submissions in memory (replace with database in production)
 leads = []
