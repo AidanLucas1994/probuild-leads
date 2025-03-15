@@ -6,7 +6,14 @@ import csv
 import io
 import os
 
-app = Flask(__name__)
+# Get the absolute path of the current directory
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# Initialize Flask app with explicit template and static folder paths
+app = Flask(__name__,
+            template_folder=os.path.join(BASE_DIR, 'templates'),
+            static_folder=os.path.join(BASE_DIR, 'static'))
+
 # Use environment variable for secret key with a fallback
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-please-change-in-production')
 # Disable debug mode in production
