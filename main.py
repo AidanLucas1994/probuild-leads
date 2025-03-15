@@ -5,9 +5,28 @@ import random
 import csv
 import io
 import os
+import sys
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Get the absolute path of the current directory
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# Ensure template and static directories exist
+template_dir = os.path.join(BASE_DIR, 'templates')
+static_dir = os.path.join(BASE_DIR, 'static')
+
+try:
+    os.makedirs(template_dir, exist_ok=True)
+    os.makedirs(static_dir, exist_ok=True)
+    logger.info(f"Template directory: {template_dir}")
+    logger.info(f"Static directory: {static_dir}")
+except Exception as e:
+    logger.error(f"Error creating directories: {e}")
+    sys.exit(1)
 
 # Initialize Flask app with explicit template and static folder paths
 app = Flask(__name__,
@@ -223,7 +242,21 @@ def api_leads():
         'data': response_data
     })
 
+@app.route('/health')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'template_dir': os.path.exists(template_dir),
+        'static_dir': os.path.exists(static_dir)
+    })
+
 if __name__ == '__main__':
+    # Log startup information
+    logger.info(f"Starting application in {os.environ.get('FLASK_ENV', 'production')} mode")
+    logger.info(f"Template directory exists: {os.path.exists(template_dir)}")
+    logger.info(f"Static directory exists: {os.path.exists(static_dir)}")
+    
     # Bind to PORT if defined, otherwise default to 5000.
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
