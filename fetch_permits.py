@@ -101,13 +101,13 @@ def fetch_permit_data():
 def transform_permit_data(df):
     """
     Transform raw permit data by filtering recent permits and adding lead priority.
+    Handles missing and invalid data with default values.
     
     Args:
         df (pandas.DataFrame): Raw permit data DataFrame
     
     Returns:
-        dict: JSON object containing transformed permit data and metadata or
-        dict: Error response with details about missing required fields
+        dict: JSON object containing transformed permit data and metadata
     """
     try:
         if df is None or df.empty:
@@ -119,118 +119,142 @@ def transform_permit_data(df):
                 'details': 'Input DataFrame is None or empty'
             }
             
-        # Step 1: Required Fields Validation
-        logger.info("=== Step 1: Required Fields Validation ===")
-        required_fields = {
-            'FOLDERNAME': 'Property Address',
-            'PERMIT_TYPE': 'Permit Type',
-            'APPLICATION_DATE': 'Application Date'
+        # Step 1: Initial Data Analysis and Default Values Setup
+        logger.info("=== Step 1: Initial Data Analysis and Default Values ===")
+        
+        # Define default values for required fields
+        default_values = {
+            'PERMITNO': 'UNKNOWN',
+            'PERMIT_TYPE': 'Unknown',
+            'PERMIT_STATUS': 'Unknown',
+            'CONSTRUCTION_VALUE': 0.0,
+            'WORK_TYPE': 'Unknown',
+            'SUB_WORK_TYPE': 'Unknown',
+            'PERMIT_DESCRIPTION': 'No description provided',
+            'FOLDERNAME': 'Address not provided'
         }
         
-        # Check for missing required fields
-        missing_fields = [field for field in required_fields.keys() if field not in df.columns]
-        if missing_fields:
-            error_msg = f"Missing required fields: {', '.join([required_fields[f] for f in missing_fields])}"
-            logger.error(error_msg)
-            return {
-                'status': 'error',
-                'error_type': 'validation_error',
-                'message': 'Missing required fields in permit data',
-                'details': error_msg
-            }
-            
-        # Check for null values in required fields
-        null_counts = {field: df[field].isnull().sum() for field in required_fields.keys()}
-        fields_with_nulls = {field: count for field, count in null_counts.items() if count > 0}
-        
-        if fields_with_nulls:
-            error_details = {required_fields[field]: count for field, count in fields_with_nulls.items()}
-            logger.error(f"Required fields contain null values: {error_details}")
-            return {
-                'status': 'error',
-                'error_type': 'validation_error',
-                'message': 'Required fields contain null values',
-                'details': error_details
-            }
-            
-        logger.info("All required fields present and contain values")
-        logger.info(f"Field counts: {', '.join([f'{required_fields[f]}: {len(df[f].dropna())}' for f in required_fields])}")
-        
-        # Step 2: Initial Data Analysis
-        logger.info("\n=== Step 2: Initial Data Analysis ===")
+        # Log initial state
         logger.info(f"Initial DataFrame shape: {df.shape}")
-        logger.info(f"Columns present: {df.columns.tolist()}")
-        logger.info(f"Memory usage: {df.memory_usage().sum() / 1024 / 1024:.2f} MB")
+        logger.info("Missing values before filling defaults:")
+        for col in default_values.keys():
+            if col in df.columns:
+                missing = df[col].isnull().sum()
+                logger.info(f"{col}: {missing} missing values")
         
-        # Log data types of each column
-        logger.info("\nColumn Data Types:")
-        for col, dtype in df.dtypes.items():
-            logger.info(f"{col}: {dtype}")
+        # Fill missing values with defaults
+        for col, default_val in default_values.items():
+            if col in df.columns:
+                df[col] = df[col].fillna(default_val)
+                
+        # Step 2: Date Handling and Validation
+        logger.info("\n=== Step 2: Date Handling and Validation ===")
         
-        # Step 3: Date Field Analysis
-        logger.info("\n=== Step 3: Date Field Analysis ===")
+        # Convert APPLICATION_DATE to datetime with error handling
         logger.info("Converting APPLICATION_DATE to datetime...")
-        # Log initial date statistics
-        logger.info("Before conversion:")
-        logger.info(f"APPLICATION_DATE unique values (first 5): {df['APPLICATION_DATE'].unique()[:5]}")
+        if 'APPLICATION_DATE' not in df.columns:
+            df['APPLICATION_DATE'] = pd.NaT
+            logger.warning("APPLICATION_DATE column not found, created with NaT values")
         
-        # Convert to datetime
+        # Store original length for logging
+        original_length = len(df)
+        
+        # Convert dates and handle invalid formats
         df['APPLICATION_DATE'] = pd.to_datetime(df['APPLICATION_DATE'], errors='coerce')
         
-        # Check if any dates failed to convert
+        # Log date conversion results
         invalid_dates = df['APPLICATION_DATE'].isnull().sum()
-        if invalid_dates > 0:
-            logger.error(f"Found {invalid_dates} invalid dates in APPLICATION_DATE")
+        logger.info(f"Found {invalid_dates} invalid or missing dates")
+        
+        # Remove records with invalid dates
+        df = df.dropna(subset=['APPLICATION_DATE'])
+        records_removed = original_length - len(df)
+        logger.info(f"Removed {records_removed} records with invalid dates")
+        
+        if df.empty:
+            logger.warning("All records were invalid after date validation")
             return {
                 'status': 'error',
                 'error_type': 'validation_error',
-                'message': 'Invalid date formats found in Application Date field',
-                'details': f'{invalid_dates} records contain invalid date formats'
+                'message': 'No valid records after date validation',
+                'details': f'All {original_length} records had invalid dates'
             }
-        
-        # Log post-conversion statistics
-        logger.info("\nAfter conversion:")
-        logger.info(f"Date range: {df['APPLICATION_DATE'].min()} to {df['APPLICATION_DATE'].max()}")
-        logger.info(f"Number of unique dates: {df['APPLICATION_DATE'].nunique()}")
-        date_counts = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
-        logger.info(f"Distribution by year: {date_counts.to_dict()}")
             
-        # Step 4: Date Filtering
-        logger.info("\n=== Step 4: Date Filtering ===")
+        # Step 3: Date Filtering
+        logger.info("\n=== Step 3: Date Filtering ===")
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
         logger.info(f"Filtering permits after: {one_year_ago}")
         
         # Count permits before filtering
         total_before = len(df)
-        logger.info(f"Total permits before filtering: {total_before}")
-        
-        # Log distribution of dates relative to cutoff
-        future_dates = sum(df['APPLICATION_DATE'] > pd.Timestamp.now())
-        past_year = sum((df['APPLICATION_DATE'] >= one_year_ago) & (df['APPLICATION_DATE'] <= pd.Timestamp.now()))
-        older_than_year = sum(df['APPLICATION_DATE'] < one_year_ago)
-        null_dates = df['APPLICATION_DATE'].isnull().sum()
-        
-        logger.info(f"Date distribution:")
-        logger.info(f"- Future dates: {future_dates}")
-        logger.info(f"- Within last year: {past_year}")
-        logger.info(f"- Older than one year: {older_than_year}")
-        logger.info(f"- Null dates: {null_dates}")
         
         # Apply date filter
         df = df[df['APPLICATION_DATE'] >= one_year_ago]
         
         # Count permits after filtering
         total_after = len(df)
-        logger.info(f"Total permits after filtering: {total_after}")
-        logger.info(f"Filtered out {total_before - total_after} permits")
+        logger.info(f"Filtered out {total_before - total_after} permits older than one year")
         
         if df.empty:
             logger.warning("No permits found within the last 12 months")
-            return None
+            return {
+                'status': 'warning',
+                'message': 'No recent permits found',
+                'details': 'No permits found within the last 12 months',
+                'metadata': {
+                    'total_records_processed': original_length,
+                    'invalid_dates_removed': records_removed,
+                    'old_permits_filtered': total_before - total_after
+                }
+            }
         
-        # Step 5: Column Selection and Renaming
-        logger.info("\n=== Step 5: Column Selection and Renaming ===")
-        key_fields = {
+        # Step 4: Data Cleaning and Standardization
+        logger.info("\n=== Step 4: Data Cleaning and Standardization ===")
+        
+        # Standardize text fields
+        text_columns = ['PERMIT_TYPE', 'PERMIT_STATUS', 'WORK_TYPE', 'SUB_WORK_TYPE']
+        for col in text_columns:
+            if col in df.columns:
+                df[col] = df[col].str.strip().str.title()
+        
+        # Clean and standardize construction values
+        df['CONSTRUCTION_VALUE'] = pd.to_numeric(df['CONSTRUCTION_VALUE'], errors='coerce')
+        df['CONSTRUCTION_VALUE'] = df['CONSTRUCTION_VALUE'].fillna(0.0)
+        
+        # Step 5: Lead Priority Assignment
+        logger.info("\n=== Step 5: Lead Priority Assignment ===")
+        def determine_priority(row):
+            try:
+                work_type = str(row.get('WORK_TYPE', '')).lower()
+                permit_type = str(row.get('PERMIT_TYPE', '')).lower()
+                value = float(row.get('CONSTRUCTION_VALUE', 0))
+                
+                # High priority cases
+                if value >= 1000000:  # High value projects
+                    return 'High'
+                elif any(term in work_type for term in ['renovation', 'alteration', 'addition']):
+                    return 'High'
+                elif 'new construction' in work_type and 'residential' in permit_type:
+                    return 'High'
+                # Medium priority cases
+                elif value >= 500000:  # Medium value projects
+                    return 'Medium'
+                elif 'residential' in permit_type:
+                    return 'Medium'
+                # Low priority cases
+                else:
+                    return 'Low'
+            except Exception as e:
+                logger.warning(f"Error determining priority: {e}")
+                return 'Low'  # Default to low priority if there's an error
+                
+        df['Lead Priority'] = df.apply(determine_priority, axis=1)
+        
+        # Step 6: Prepare Final Output
+        logger.info("\n=== Step 6: Preparing Final Output ===")
+        
+        # Select and rename columns
+        output_columns = {
             'PERMITNO': 'Permit Number',
             'PERMIT_TYPE': 'Permit Type',
             'APPLICATION_DATE': 'Application Date',
@@ -238,107 +262,67 @@ def transform_permit_data(df):
             'CONSTRUCTION_VALUE': 'Construction Value',
             'WORK_TYPE': 'Work Type',
             'SUB_WORK_TYPE': 'Sub Work Type',
-            'PERMIT_DESCRIPTION': 'Description'
+            'PERMIT_DESCRIPTION': 'Description',
+            'FOLDERNAME': 'Property Address',
+            'Lead Priority': 'Lead Priority'
         }
         
-        # Verify all required columns exist
-        missing_columns = [col for col in key_fields.keys() if col not in df.columns]
-        if missing_columns:
-            logger.error(f"Missing required columns: {missing_columns}")
-            return None
+        # Select available columns and rename
+        available_columns = [col for col in output_columns.keys() if col in df.columns]
+        df_final = df[available_columns].copy()
+        df_final = df_final.rename(columns={col: output_columns[col] for col in available_columns})
         
-        # Log value counts for key categorical fields
-        for field in ['PERMIT_TYPE', 'PERMIT_STATUS', 'WORK_TYPE', 'SUB_WORK_TYPE']:
-            if field in df.columns:
-                logger.info(f"\n{field} value counts:")
-                logger.info(df[field].value_counts().head().to_dict())
+        # Format dates and values
+        df_final['Application Date'] = df_final['Application Date'].dt.strftime('%Y-%m-%d')
+        df_final['Construction Value'] = df_final['Construction Value'].apply(lambda x: f"${x:,.2f}")
         
-        logger.info("\nSelecting and renaming columns...")
-        df = df[list(key_fields.keys())].copy()
-        df = df.rename(columns=key_fields)
-        
-        # Step 6: Lead Priority Assignment
-        logger.info("\n=== Step 6: Lead Priority Assignment ===")
-        logger.info("Adding lead priorities...")
-        def determine_priority(row):
-            work_type = str(row['Work Type']).lower()
-            permit_type = str(row['Permit Type']).lower()
-            
-            # High priority cases
-            if any(term in work_type for term in ['renovation', 'alteration', 'addition']):
-                return 'High'
-            elif 'new construction' in work_type and 'residential' in permit_type:
-                return 'High'
-            # Medium priority cases
-            elif 'residential' in permit_type:
-                return 'Medium'
-            elif 'commercial' in permit_type and 'new construction' in work_type:
-                return 'Medium'
-            # Low priority cases
-            else:
-                return 'Low'
-        
-        df['Lead Priority'] = df.apply(determine_priority, axis=1)
-        priority_counts = df['Lead Priority'].value_counts()
-        logger.info("\nLead Priority Distribution:")
-        logger.info(priority_counts.to_dict())
-        
-        # Step 7: Data Formatting
-        logger.info("\n=== Step 7: Data Formatting ===")
-        logger.info("Formatting dates and values...")
-        
-        # Log construction value statistics before formatting
-        logger.info("\nConstruction Value Statistics (before formatting):")
-        logger.info(f"Min: {df['Construction Value'].min()}")
-        logger.info(f"Max: {df['Construction Value'].max()}")
-        logger.info(f"Mean: {df['Construction Value'].mean()}")
-        logger.info(f"Null values: {df['Construction Value'].isnull().sum()}")
-        
-        df['Application Date'] = df['Application Date'].dt.strftime('%Y-%m-%d')
-        df['Construction Value'] = df['Construction Value'].fillna(0.0)
-        df['Construction Value'] = df['Construction Value'].apply(lambda x: f"${x:,.2f}")
-        
-        # Step 8: Summary Statistics
-        logger.info("\n=== Step 8: Summary Statistics ===")
-        logger.info("Calculating summary statistics...")
+        # Prepare summary statistics
         summary = {
-            'total_permits': len(df),
-            'priority_distribution': df['Lead Priority'].value_counts().to_dict(),
-            'permit_type_distribution': df['Permit Type'].value_counts().to_dict(),
+            'total_permits': len(df_final),
+            'priority_distribution': df_final['Lead Priority'].value_counts().to_dict(),
+            'permit_type_distribution': df_final['Permit Type'].value_counts().to_dict(),
             'date_range': {
-                'start': df['Application Date'].min(),
-                'end': df['Application Date'].max()
-            }
-        }
-        logger.info(f"Summary statistics: {summary}")
-        
-        # Step 9: Final JSON Conversion
-        logger.info("\n=== Step 9: Final JSON Conversion ===")
-        logger.info("Converting DataFrame to JSON structure...")
-        permits = df.to_dict(orient='records')
-        logger.info(f"Number of permits in final output: {len(permits)}")
-        
-        # Return JSON structure
-        result = {
-            'status': 'success',
-            'summary': summary,
-            'permits': permits,
-            'metadata': {
-                'timestamp': datetime.now().isoformat(),
-                'filters_applied': {
-                    'date_range': f"Last 12 months (from {one_year_ago.strftime('%Y-%m-%d')})",
-                    'fields_selected': list(key_fields.values())
+                'start': df_final['Application Date'].min(),
+                'end': df_final['Application Date'].max()
+            },
+            'data_quality': {
+                'original_records': original_length,
+                'invalid_dates_removed': records_removed,
+                'records_within_time_range': len(df_final),
+                'fields_with_defaults': {
+                    field: sum(df_final[output_columns[field]] == default_values[field])
+                    for field in default_values.keys()
+                    if field in df.columns and output_columns[field] in df_final.columns
                 }
             }
         }
         
-        logger.info("\nSuccessfully transformed permit data")
+        # Return final result
+        result = {
+            'status': 'success',
+            'summary': summary,
+            'permits': df_final.to_dict(orient='records'),
+            'metadata': {
+                'timestamp': datetime.now().isoformat(),
+                'filters_applied': {
+                    'date_range': f"Last 12 months (from {one_year_ago.strftime('%Y-%m-%d')})",
+                    'fields_selected': list(df_final.columns)
+                }
+            }
+        }
+        
+        logger.info("Successfully transformed permit data")
+        logger.info(f"Final record count: {len(df_final)}")
         return result
         
     except Exception as e:
         logger.error(f"Error transforming permit data: {str(e)}", exc_info=True)
-        logger.error(f"Error occurred at line {sys.exc_info()[2].tb_lineno}")
-        return None
+        return {
+            'status': 'error',
+            'error_type': 'processing_error',
+            'message': 'Error processing permit data',
+            'details': str(e)
+        }
 
 def main():
     # Fetch the data
