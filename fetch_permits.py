@@ -106,15 +106,58 @@ def transform_permit_data(df):
         df (pandas.DataFrame): Raw permit data DataFrame
     
     Returns:
-        dict: JSON object containing transformed permit data and metadata
+        dict: JSON object containing transformed permit data and metadata or
+        dict: Error response with details about missing required fields
     """
     try:
         if df is None or df.empty:
             logger.warning("Input DataFrame is None or empty")
-            return None
+            return {
+                'status': 'error',
+                'error_type': 'validation_error',
+                'message': 'No permit data provided',
+                'details': 'Input DataFrame is None or empty'
+            }
             
-        # Step 1: Initial Data Analysis
-        logger.info("=== Step 1: Initial Data Analysis ===")
+        # Step 1: Required Fields Validation
+        logger.info("=== Step 1: Required Fields Validation ===")
+        required_fields = {
+            'FOLDERNAME': 'Property Address',
+            'PERMIT_TYPE': 'Permit Type',
+            'APPLICATION_DATE': 'Application Date'
+        }
+        
+        # Check for missing required fields
+        missing_fields = [field for field in required_fields.keys() if field not in df.columns]
+        if missing_fields:
+            error_msg = f"Missing required fields: {', '.join([required_fields[f] for f in missing_fields])}"
+            logger.error(error_msg)
+            return {
+                'status': 'error',
+                'error_type': 'validation_error',
+                'message': 'Missing required fields in permit data',
+                'details': error_msg
+            }
+            
+        # Check for null values in required fields
+        null_counts = {field: df[field].isnull().sum() for field in required_fields.keys()}
+        fields_with_nulls = {field: count for field, count in null_counts.items() if count > 0}
+        
+        if fields_with_nulls:
+            error_details = {required_fields[field]: count for field, count in fields_with_nulls.items()}
+            logger.error(f"Required fields contain null values: {error_details}")
+            return {
+                'status': 'error',
+                'error_type': 'validation_error',
+                'message': 'Required fields contain null values',
+                'details': error_details
+            }
+            
+        logger.info("All required fields present and contain values")
+        logger.info(f"Field counts: {', '.join([f'{required_fields[f]}: {len(df[f].dropna())}' for f in required_fields])}")
+        
+        # Step 2: Initial Data Analysis
+        logger.info("\n=== Step 2: Initial Data Analysis ===")
         logger.info(f"Initial DataFrame shape: {df.shape}")
         logger.info(f"Columns present: {df.columns.tolist()}")
         logger.info(f"Memory usage: {df.memory_usage().sum() / 1024 / 1024:.2f} MB")
@@ -124,31 +167,36 @@ def transform_permit_data(df):
         for col, dtype in df.dtypes.items():
             logger.info(f"{col}: {dtype}")
         
-        # Step 2: Date Field Analysis
-        logger.info("\n=== Step 2: Date Field Analysis ===")
-        if 'APPLICATION_DATE' in df.columns:
-            logger.info("Converting APPLICATION_DATE to datetime...")
-            # Log initial date statistics
-            logger.info("Before conversion:")
-            logger.info(f"APPLICATION_DATE unique values (first 5): {df['APPLICATION_DATE'].unique()[:5]}")
-            logger.info(f"APPLICATION_DATE null count: {df['APPLICATION_DATE'].isnull().sum()}")
+        # Step 3: Date Field Analysis
+        logger.info("\n=== Step 3: Date Field Analysis ===")
+        logger.info("Converting APPLICATION_DATE to datetime...")
+        # Log initial date statistics
+        logger.info("Before conversion:")
+        logger.info(f"APPLICATION_DATE unique values (first 5): {df['APPLICATION_DATE'].unique()[:5]}")
+        
+        # Convert to datetime
+        df['APPLICATION_DATE'] = pd.to_datetime(df['APPLICATION_DATE'], errors='coerce')
+        
+        # Check if any dates failed to convert
+        invalid_dates = df['APPLICATION_DATE'].isnull().sum()
+        if invalid_dates > 0:
+            logger.error(f"Found {invalid_dates} invalid dates in APPLICATION_DATE")
+            return {
+                'status': 'error',
+                'error_type': 'validation_error',
+                'message': 'Invalid date formats found in Application Date field',
+                'details': f'{invalid_dates} records contain invalid date formats'
+            }
+        
+        # Log post-conversion statistics
+        logger.info("\nAfter conversion:")
+        logger.info(f"Date range: {df['APPLICATION_DATE'].min()} to {df['APPLICATION_DATE'].max()}")
+        logger.info(f"Number of unique dates: {df['APPLICATION_DATE'].nunique()}")
+        date_counts = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
+        logger.info(f"Distribution by year: {date_counts.to_dict()}")
             
-            # Convert to datetime
-            df['APPLICATION_DATE'] = pd.to_datetime(df['APPLICATION_DATE'], errors='coerce')
-            
-            # Log post-conversion statistics
-            logger.info("\nAfter conversion:")
-            logger.info(f"Date range: {df['APPLICATION_DATE'].min()} to {df['APPLICATION_DATE'].max()}")
-            logger.info(f"Number of null dates: {df['APPLICATION_DATE'].isnull().sum()}")
-            logger.info(f"Number of unique dates: {df['APPLICATION_DATE'].nunique()}")
-            date_counts = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
-            logger.info(f"Distribution by year: {date_counts.to_dict()}")
-        else:
-            logger.error("APPLICATION_DATE column not found in DataFrame")
-            return None
-            
-        # Step 3: Date Filtering
-        logger.info("\n=== Step 3: Date Filtering ===")
+        # Step 4: Date Filtering
+        logger.info("\n=== Step 4: Date Filtering ===")
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
         logger.info(f"Filtering permits after: {one_year_ago}")
         
@@ -180,8 +228,8 @@ def transform_permit_data(df):
             logger.warning("No permits found within the last 12 months")
             return None
         
-        # Step 4: Column Selection and Renaming
-        logger.info("\n=== Step 4: Column Selection and Renaming ===")
+        # Step 5: Column Selection and Renaming
+        logger.info("\n=== Step 5: Column Selection and Renaming ===")
         key_fields = {
             'PERMITNO': 'Permit Number',
             'PERMIT_TYPE': 'Permit Type',
@@ -209,8 +257,8 @@ def transform_permit_data(df):
         df = df[list(key_fields.keys())].copy()
         df = df.rename(columns=key_fields)
         
-        # Step 5: Lead Priority Assignment
-        logger.info("\n=== Step 5: Lead Priority Assignment ===")
+        # Step 6: Lead Priority Assignment
+        logger.info("\n=== Step 6: Lead Priority Assignment ===")
         logger.info("Adding lead priorities...")
         def determine_priority(row):
             work_type = str(row['Work Type']).lower()
@@ -235,8 +283,8 @@ def transform_permit_data(df):
         logger.info("\nLead Priority Distribution:")
         logger.info(priority_counts.to_dict())
         
-        # Step 6: Data Formatting
-        logger.info("\n=== Step 6: Data Formatting ===")
+        # Step 7: Data Formatting
+        logger.info("\n=== Step 7: Data Formatting ===")
         logger.info("Formatting dates and values...")
         
         # Log construction value statistics before formatting
@@ -250,8 +298,8 @@ def transform_permit_data(df):
         df['Construction Value'] = df['Construction Value'].fillna(0.0)
         df['Construction Value'] = df['Construction Value'].apply(lambda x: f"${x:,.2f}")
         
-        # Step 7: Summary Statistics
-        logger.info("\n=== Step 7: Summary Statistics ===")
+        # Step 8: Summary Statistics
+        logger.info("\n=== Step 8: Summary Statistics ===")
         logger.info("Calculating summary statistics...")
         summary = {
             'total_permits': len(df),
@@ -264,8 +312,8 @@ def transform_permit_data(df):
         }
         logger.info(f"Summary statistics: {summary}")
         
-        # Step 8: Final JSON Conversion
-        logger.info("\n=== Step 8: Final JSON Conversion ===")
+        # Step 9: Final JSON Conversion
+        logger.info("\n=== Step 9: Final JSON Conversion ===")
         logger.info("Converting DataFrame to JSON structure...")
         permits = df.to_dict(orient='records')
         logger.info(f"Number of permits in final output: {len(permits)}")
