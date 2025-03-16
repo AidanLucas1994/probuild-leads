@@ -99,33 +99,41 @@ def transform_permit_data(df):
     Returns:
         dict: JSON object containing transformed permit data and metadata
     """
-    if df is None or df.empty:
-        logger.warning("Input DataFrame is None or empty")
-        return None
-        
     try:
+        if df is None or df.empty:
+            logger.warning("Input DataFrame is None or empty")
+            return None
+            
+        # Log initial data state
+        logger.info(f"Initial DataFrame shape: {df.shape}")
+        logger.info(f"Columns present: {df.columns.tolist()}")
+        
+        # Convert APPLICATION_DATE to datetime if it's not already
+        if 'APPLICATION_DATE' in df.columns:
+            logger.info("Converting APPLICATION_DATE to datetime...")
+            df['APPLICATION_DATE'] = pd.to_datetime(df['APPLICATION_DATE'], errors='coerce')
+            logger.info(f"Date range in data: {df['APPLICATION_DATE'].min()} to {df['APPLICATION_DATE'].max()}")
+            logger.info(f"Number of null dates: {df['APPLICATION_DATE'].isnull().sum()}")
+        else:
+            logger.error("APPLICATION_DATE column not found in DataFrame")
+            return None
+            
         # Filter for permits within the last year
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
         logger.info(f"Filtering permits after: {one_year_ago}")
         
-        # Log the range of dates in the DataFrame
-        logger.info(f"Date range in DataFrame: {df['APPLICATION_DATE'].min()} to {df['APPLICATION_DATE'].max()}")
-        logger.info(f"Total permits before filtering: {len(df)}")
+        # Count permits before filtering
+        total_before = len(df)
+        logger.info(f"Total permits before filtering: {total_before}")
         
-        # Debug date filtering
-        for idx, row in df.iterrows():
-            app_date = row['APPLICATION_DATE']
-            if pd.isna(app_date):
-                logger.info(f"Permit {row.get('PERMITNO', 'Unknown')}: Excluded (No application date)")
-            else:
-                included = app_date >= one_year_ago
-                status = "Included" if included else "Excluded"
-                logger.info(f"Permit {row.get('PERMITNO', 'Unknown')}: {status} (Application Date: {app_date})")
-        
+        # Apply date filter
         df = df[df['APPLICATION_DATE'] >= one_year_ago]
-        logger.info(f"Total permits after filtering: {len(df)}")
         
-        # If no permits after filtering, return empty response
+        # Count permits after filtering
+        total_after = len(df)
+        logger.info(f"Total permits after filtering: {total_after}")
+        logger.info(f"Filtered out {total_before - total_after} permits")
+        
         if df.empty:
             logger.warning("No permits found within the last 12 months")
             return None
@@ -142,10 +150,18 @@ def transform_permit_data(df):
             'PERMIT_DESCRIPTION': 'Description'
         }
         
+        # Verify all required columns exist
+        missing_columns = [col for col in key_fields.keys() if col not in df.columns]
+        if missing_columns:
+            logger.error(f"Missing required columns: {missing_columns}")
+            return None
+        
+        logger.info("Selecting and renaming columns...")
         df = df[list(key_fields.keys())].copy()
         df = df.rename(columns=key_fields)
         
         # Add Lead Priority based on permit types and work types
+        logger.info("Adding lead priorities...")
         def determine_priority(row):
             work_type = str(row['Work Type']).lower()
             permit_type = str(row['Permit Type']).lower()
@@ -167,10 +183,13 @@ def transform_permit_data(df):
         df['Lead Priority'] = df.apply(determine_priority, axis=1)
         
         # Format dates and values
+        logger.info("Formatting dates and values...")
         df['Application Date'] = df['Application Date'].dt.strftime('%Y-%m-%d')
+        df['Construction Value'] = df['Construction Value'].fillna(0.0)
         df['Construction Value'] = df['Construction Value'].apply(lambda x: f"${x:,.2f}")
         
         # Calculate summary statistics
+        logger.info("Calculating summary statistics...")
         summary = {
             'total_permits': len(df),
             'priority_distribution': df['Lead Priority'].value_counts().to_dict(),
@@ -182,10 +201,11 @@ def transform_permit_data(df):
         }
         
         # Convert DataFrame to list of dictionaries
+        logger.info("Converting DataFrame to JSON structure...")
         permits = df.to_dict(orient='records')
         
         # Return JSON structure
-        return {
+        result = {
             'status': 'success',
             'summary': summary,
             'permits': permits,
@@ -198,8 +218,11 @@ def transform_permit_data(df):
             }
         }
         
+        logger.info("Successfully transformed permit data")
+        return result
+        
     except Exception as e:
-        logger.error(f"Error transforming permit data: {e}")
+        logger.error(f"Error transforming permit data: {str(e)}", exc_info=True)
         return None
 
 def main():
