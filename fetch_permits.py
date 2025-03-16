@@ -113,6 +113,34 @@ def fetch_permit_data():
         logger.error("Error fetching permit data: {}".format(str(e)), exc_info=True)
         return None
 
+def determine_contractor_type(row):
+    """
+    Determine the contractor type based on permit details.
+    """
+    try:
+        work_type = str(row.get('WORK_TYPE', '')).lower()
+        permit_type = str(row.get('PERMIT_TYPE', '')).lower()
+        description = str(row.get('PERMIT_DESCRIPTION', '')).lower()
+        sub_work_type = str(row.get('SUB_WORK_TYPE', '')).lower()
+        
+        # Check for General Contractors
+        if any(term in work_type for term in ['garden suite', 'addition to building', 'addition']):
+            return 'General Contractors'
+            
+        # Check for Plumbers
+        if any(term in description or term in sub_work_type for term in ['bathroom', 'plumbing']):
+            return 'Plumbers'
+            
+        # Check for Electricians
+        if 'interior finish' in work_type or 'interior finish' in sub_work_type:
+            return 'Electricians'
+            
+        # Default category
+        return 'General'
+    except Exception as e:
+        logger.warning(f"Error determining contractor type: {e}")
+        return 'General'
+
 def transform_permit_data(df):
     """
     Transform raw permit data by filtering recent permits and adding lead priority.
@@ -259,10 +287,11 @@ def transform_permit_data(df):
             logger.info("\nMost recent permits (all excluded):")
             most_recent = df.nlargest(5, 'APPLICATION_DATE')
             for _, permit in most_recent.iterrows():
-                logger.info("Permit {}: {} - {}".format(
+                logger.info("Permit {}: {} - {} - {} - ${}".format(
                     permit.get('PERMITNO', 'Unknown'),
                     permit['APPLICATION_DATE'].strftime('%Y-%m-%d'),
-                    permit.get('PERMIT_TYPE', 'Unknown Type')
+                    permit.get('PERMIT_TYPE', 'Unknown Type'),
+                    permit.get('CONSTRUCTION_VALUE', 'N/A')
                 ))
 
         # Update the df with filtered data
@@ -302,8 +331,18 @@ def transform_permit_data(df):
         df['CONSTRUCTION_VALUE'] = pd.to_numeric(df['CONSTRUCTION_VALUE'], errors='coerce')
         df['CONSTRUCTION_VALUE'] = df['CONSTRUCTION_VALUE'].fillna(0.0)
         
-        # Step 5: Lead Priority Assignment
-        logger.info("\n=== Step 5: Lead Priority Assignment ===")
+        # Step 5: Add Contractor Type
+        logger.info("\n=== Step 5: Adding Contractor Type ===")
+        df['Contractor Type'] = df.apply(determine_contractor_type, axis=1)
+        
+        # Log contractor type distribution
+        contractor_type_counts = df['Contractor Type'].value_counts()
+        logger.info("\nContractor Type Distribution:")
+        for contractor_type, count in contractor_type_counts.items():
+            logger.info(f"{contractor_type}: {count} permits")
+        
+        # Step 6: Lead Priority Assignment
+        logger.info("\n=== Step 6: Lead Priority Assignment ===")
         def determine_priority(row):
             try:
                 work_type = str(row.get('WORK_TYPE', '')).lower()
@@ -331,8 +370,8 @@ def transform_permit_data(df):
                 
         df['Lead Priority'] = df.apply(determine_priority, axis=1)
         
-        # Step 6: Prepare Final Output
-        logger.info("\n=== Step 6: Preparing Final Output ===")
+        # Step 7: Prepare Final Output
+        logger.info("\n=== Step 7: Preparing Final Output ===")
         
         # Select and rename columns
         output_columns = {
@@ -345,7 +384,8 @@ def transform_permit_data(df):
             'SUB_WORK_TYPE': 'Sub Work Type',
             'PERMIT_DESCRIPTION': 'Description',
             'FOLDERNAME': 'Property Address',
-            'Lead Priority': 'Lead Priority'
+            'Lead Priority': 'Lead Priority',
+            'Contractor Type': 'Contractor Type'
         }
         
         # Select available columns and rename
@@ -361,6 +401,7 @@ def transform_permit_data(df):
         summary = {
             'total_permits': len(df_final),
             'priority_distribution': df_final['Lead Priority'].value_counts().to_dict(),
+            'contractor_type_distribution': df_final['Contractor Type'].value_counts().to_dict(),
             'permit_type_distribution': df_final['Permit Type'].value_counts().to_dict(),
             'date_range': {
                 'start': df_final['Application Date'].min(),
