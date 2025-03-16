@@ -120,3 +120,4 @@ websocket-client==1.8.0
 Werkzeug==3.0.6
 widgetsnbextension==4.0.13
 zipp==3.20.2
+gunicorn==21.2.0
