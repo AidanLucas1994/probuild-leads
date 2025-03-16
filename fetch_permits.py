@@ -99,6 +99,27 @@ def transform_permit_data(df):
                 'details': 'Input DataFrame is None or empty'
             }
             
+        # Initial logging of date range
+        logger.info("\n=== Initial Date Analysis ===")
+        if 'APPLICATION_DATE' in df.columns:
+            min_date = df['APPLICATION_DATE'].min()
+            max_date = df['APPLICATION_DATE'].max()
+            logger.info("Date range in raw data:")
+            logger.info("Earliest date: {}".format(min_date))
+            logger.info("Latest date: {}".format(max_date))
+            logger.info("Total records: {}".format(len(df)))
+            
+            # Add distribution of dates by year and month
+            year_counts = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
+            logger.info("\nDistribution by year:")
+            for year, count in year_counts.items():
+                logger.info("{}: {} permits".format(year, count))
+            
+            # Get current month's permits
+            current_month = pd.Timestamp.now().replace(day=1)
+            current_month_permits = df[df['APPLICATION_DATE'] >= current_month]
+            logger.info("\nPermits in current month: {}".format(len(current_month_permits)))
+
         # Step 1: Initial Data Analysis and Default Values Setup
         logger.info("=== Step 1: Initial Data Analysis and Default Values ===")
         
@@ -170,36 +191,52 @@ def transform_permit_data(df):
                 'details': 'All {} records had invalid dates'.format(original_length)
             }
             
-        # Step 3: Date Filtering
+        # Enhanced date filtering section
         logger.info("\n=== Step 3: Date Filtering ===")
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
-        logger.info("\nThreshold Date for Filtering: {}".format(one_year_ago.strftime('%Y-%m-%d')))
-        logger.info("Any permit with application date before this will be excluded.")
+        logger.info("\nDate Filtering Details:")
+        logger.info("Current timestamp: {}".format(pd.Timestamp.now()))
+        logger.info("One year ago threshold: {}".format(one_year_ago))
+        logger.info("Any permit with application date before {} will be excluded".format(
+            one_year_ago.strftime('%Y-%m-%d')))
         
+        # Sample of dates around the threshold
+        logger.info("\nSample of dates around threshold:")
+        sample_dates = df.sort_values('APPLICATION_DATE').iloc[-10:]['APPLICATION_DATE']
+        for date in sample_dates:
+            status = "INCLUDED" if date >= one_year_ago else "EXCLUDED"
+            logger.info("{}: {} (Threshold: {})".format(
+                date.strftime('%Y-%m-%d'),
+                status,
+                "After" if date >= one_year_ago else "Before"
+            ))
+
         # Count permits before filtering
         total_before = len(df)
         
-        # Log filtering decision for each permit
-        logger.info("\nDate Filtering Results:")
-        included_permits = []
-        for idx, row in df.iterrows():
-            permit_no = row['PERMITNO']
-            app_date = row['APPLICATION_DATE']
-            is_included = app_date >= one_year_ago
-            status = "INCLUDED" if is_included else "EXCLUDED"
-            logger.info("Permit {}: {} - {}".format(
-                permit_no, app_date.strftime('%Y-%m-%d'), status))
-            if is_included:
-                included_permits.append(idx)
+        # Apply date filter with detailed logging
+        recent_permits = df[df['APPLICATION_DATE'] >= one_year_ago]
+        total_after = len(recent_permits)
         
-        # Apply date filter
-        df = df.loc[included_permits]
+        logger.info("\nFiltering Results:")
+        logger.info("Total permits before filtering: {}".format(total_before))
+        logger.info("Permits within last 12 months: {}".format(total_after))
+        logger.info("Permits excluded: {}".format(total_before - total_after))
         
-        # Count permits after filtering
-        total_after = len(df)
-        logger.info("\nFiltered out {} permits older than one year".format(total_before - total_after))
-        logger.info("Remaining permits: {}".format(total_after))
-        
+        if total_after == 0:
+            # If no permits are within range, log the most recent ones
+            logger.info("\nMost recent permits (all excluded):")
+            most_recent = df.nlargest(5, 'APPLICATION_DATE')
+            for _, permit in most_recent.iterrows():
+                logger.info("Permit {}: {} - {}".format(
+                    permit.get('PERMITNO', 'Unknown'),
+                    permit['APPLICATION_DATE'].strftime('%Y-%m-%d'),
+                    permit.get('PERMIT_TYPE', 'Unknown Type')
+                ))
+
+        # Update the df with filtered data
+        df = recent_permits
+
         if df.empty:
             logger.warning("No permits found within the last 12 months")
             return {
@@ -209,7 +246,12 @@ def transform_permit_data(df):
                 'metadata': {
                     'total_records_processed': original_length,
                     'invalid_dates_removed': records_removed,
-                    'old_permits_filtered': total_before - total_after
+                    'old_permits_filtered': total_before - total_after,
+                    'date_range': {
+                        'earliest': min_date.strftime('%Y-%m-%d') if min_date is not None else None,
+                        'latest': max_date.strftime('%Y-%m-%d') if max_date is not None else None,
+                        'threshold': one_year_ago.strftime('%Y-%m-%d')
+                    }
                 }
             }
         
