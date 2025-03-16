@@ -544,6 +544,86 @@ def fetch_permits():
             'error_details': str(e)
         }), 500
 
+@app.route('/leads')
+def get_leads_by_contractor():
+    """
+    Fetch permit data and organize it by contractor type.
+    Returns a JSON response with permits grouped by contractor type and summary statistics.
+    """
+    try:
+        logger.info("Fetching permit data for contractor categorization...")
+        
+        # Fetch permit data using the existing endpoint functionality
+        raw_df = fetch_permit_data()
+        if raw_df is None:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to fetch permit data',
+                'error_type': 'data_fetch_error'
+            }), 500
+
+        # Transform the data
+        result = transform_permit_data(raw_df)
+        if result['status'] != 'success':
+            return jsonify(result), 400
+
+        # Extract permits from the result
+        permits = result['permits']
+        
+        # Group permits by contractor type
+        categorized_permits = {}
+        contractor_counts = {}
+        
+        for permit in permits:
+            contractor_type = permit['Contractor Type']
+            
+            # Initialize contractor type group if not exists
+            if contractor_type not in categorized_permits:
+                categorized_permits[contractor_type] = []
+                contractor_counts[contractor_type] = 0
+            
+            # Add permit to its contractor type group
+            categorized_permits[contractor_type].append(permit)
+            contractor_counts[contractor_type] += 1
+
+        # Calculate total value by contractor type
+        contractor_values = {}
+        for contractor_type, permits_list in categorized_permits.items():
+            total_value = sum(float(permit['Construction Value'].replace('$', '').replace(',', '')) 
+                            for permit in permits_list)
+            contractor_values[contractor_type] = "${:,.2f}".format(total_value)
+
+        # Prepare the response
+        response = {
+            'status': 'success',
+            'summary': {
+                'total_permits': len(permits),
+                'contractor_distribution': contractor_counts,
+                'total_value_by_contractor': contractor_values,
+                'date_range': result['summary']['date_range']
+            },
+            'categorized_permits': categorized_permits,
+            'metadata': {
+                'timestamp': datetime.now().isoformat(),
+                'source': 'Building Permits API',
+                'categories': list(categorized_permits.keys())
+            }
+        }
+
+        logger.info(f"Successfully categorized {len(permits)} permits by contractor type")
+        logger.info("Contractor type distribution: {}".format(contractor_counts))
+        
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error in /leads route: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': 'An error occurred while processing the leads',
+            'error_type': 'processing_error',
+            'error_details': str(e)
+        }), 500
+
 if __name__ == '__main__':
     # Log startup information
     logger.info(f"Starting application in {os.environ.get('FLASK_ENV', 'production')} mode")
