@@ -497,12 +497,13 @@ def regenerate_data():
 @app.route('/fetch-permit-data')
 def fetch_permits():
     """
-    Fetch and transform permit data from the ArcGIS API.
-    Returns JSON with permit data and summary statistics.
+    Fetch raw permit data from the ArcGIS API.
+    Returns JSON with raw permit data for testing purposes.
     """
     try:
         logger.info("Fetching raw permit data from API...")
         raw_df = fetch_permit_data()
+        
         if raw_df is None:
             logger.error("Failed to fetch permit data from API")
             return jsonify({
@@ -511,25 +512,31 @@ def fetch_permits():
                 'error_type': 'api_error'
             }), 500
 
-        logger.info(f"Successfully fetched {len(raw_df)} raw permits. Transforming data...")
-        result = transform_permit_data(raw_df)
-        if result is None:
-            logger.error("Failed to transform permit data")
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to transform permit data',
-                'error_type': 'transformation_error'
-            }), 500
+        # Convert raw DataFrame to JSON, handling datetime objects
+        raw_data = []
+        for _, row in raw_df.iterrows():
+            permit_dict = {}
+            for column, value in row.items():
+                if isinstance(value, datetime):
+                    permit_dict[column] = value.isoformat()
+                else:
+                    permit_dict[column] = value
+            raw_data.append(permit_dict)
 
-        # The transform_permit_data function now returns a complete JSON structure
-        logger.info(f"Successfully processed permit data")
-        return jsonify(result)
+        logger.info(f"Successfully fetched {len(raw_data)} raw permits")
+        return jsonify({
+            'status': 'success',
+            'message': 'Raw permit data retrieved successfully',
+            'total_records': len(raw_data),
+            'columns': raw_df.columns.tolist(),
+            'data': raw_data
+        })
 
     except Exception as e:
         logger.error(f"Unexpected error in fetch-permit-data route: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
-            'message': 'An unexpected error occurred while processing permit data',
+            'message': 'An unexpected error occurred while fetching permit data',
             'error_type': 'unexpected_error',
             'error_details': str(e)
         }), 500
