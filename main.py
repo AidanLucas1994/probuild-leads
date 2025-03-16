@@ -501,26 +501,32 @@ def fetch_permits():
     Returns JSON with permit data and summary statistics.
     """
     try:
-        # Fetch raw permit data
+        logger.info("Fetching raw permit data from API...")
         raw_df = fetch_permit_data()
         if raw_df is None:
+            logger.error("Failed to fetch permit data from API")
             return jsonify({
                 'status': 'error',
-                'message': 'Failed to fetch permit data'
+                'message': 'Failed to fetch permit data from API',
+                'error_type': 'api_error'
             }), 500
 
-        # Transform the data
+        logger.info(f"Successfully fetched {len(raw_df)} raw permits. Transforming data...")
         transformed_df = transform_permit_data(raw_df)
         if transformed_df is None:
+            logger.error("Failed to transform permit data")
             return jsonify({
                 'status': 'error',
-                'message': 'Failed to transform permit data'
+                'message': 'Failed to transform permit data',
+                'error_type': 'transformation_error'
             }), 500
 
         if transformed_df.empty:
+            logger.info("No permits found within the last year")
             return jsonify({
                 'status': 'error',
-                'message': 'No permits found within the last year'
+                'message': 'No permits found within the last year',
+                'error_type': 'no_data'
             }), 404
 
         # Calculate summary statistics
@@ -528,23 +534,48 @@ def fetch_permits():
             'total_permits': len(transformed_df),
             'priority_distribution': transformed_df['LEAD_PRIORITY'].value_counts().to_dict(),
             'permit_type_distribution': transformed_df['PERMIT_TYPE'].value_counts().to_dict(),
-            'total_units': transformed_df['TOTAL_UNITS'].sum()
+            'total_units': int(transformed_df['TOTAL_UNITS'].sum()),
+            'date_range': {
+                'start': transformed_df['APPLICATION_DATE'].min(),
+                'end': transformed_df['APPLICATION_DATE'].max()
+            }
         }
+
+        # Add value statistics if available
+        try:
+            if 'CONSTRUCTION_VALUE' in transformed_df.columns:
+                # Remove currency formatting for calculations
+                values = transformed_df['CONSTRUCTION_VALUE'].str.replace('$', '').str.replace(',', '').astype(float)
+                summary['value_statistics'] = {
+                    'total_value': f"${values.sum():,.2f}",
+                    'average_value': f"${values.mean():,.2f}",
+                    'median_value': f"${values.median():,.2f}"
+                }
+        except Exception as e:
+            logger.warning(f"Could not calculate value statistics: {e}")
 
         # Convert DataFrame to list of dictionaries for JSON serialization
         permits = transformed_df.to_dict(orient='records')
 
+        logger.info(f"Successfully processed {len(permits)} permits")
         return jsonify({
             'status': 'success',
             'summary': summary,
-            'permits': permits
+            'permits': permits,
+            'metadata': {
+                'timestamp': datetime.now().isoformat(),
+                'source': 'ArcGIS API',
+                'transformation_applied': True
+            }
         })
 
     except Exception as e:
-        logger.error(f"Error in fetch-permit-data route: {e}")
+        logger.error(f"Unexpected error in fetch-permit-data route: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': 'An unexpected error occurred while processing permit data',
+            'error_type': 'unexpected_error',
+            'error_details': str(e)
         }), 500
 
 if __name__ == '__main__':
