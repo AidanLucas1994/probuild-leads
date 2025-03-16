@@ -162,9 +162,19 @@ def transform_permit_data(df):
         # Convert dates and handle invalid formats
         df['APPLICATION_DATE'] = pd.to_datetime(df['APPLICATION_DATE'], errors='coerce')
         
+        # Log parsed dates for each record
+        logger.info("\nParsed Application Dates:")
+        for idx, row in df.iterrows():
+            permit_no = row.get('PERMITNO', 'Unknown Permit')
+            app_date = row['APPLICATION_DATE']
+            if pd.isna(app_date):
+                logger.info(f"Permit {permit_no}: Invalid or missing date")
+            else:
+                logger.info(f"Permit {permit_no}: {app_date.strftime('%Y-%m-%d')}")
+        
         # Log date conversion results
         invalid_dates = df['APPLICATION_DATE'].isnull().sum()
-        logger.info(f"Found {invalid_dates} invalid or missing dates")
+        logger.info(f"\nFound {invalid_dates} invalid or missing dates")
         
         # Remove records with invalid dates
         df = df.dropna(subset=['APPLICATION_DATE'])
@@ -183,17 +193,31 @@ def transform_permit_data(df):
         # Step 3: Date Filtering
         logger.info("\n=== Step 3: Date Filtering ===")
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
-        logger.info(f"Filtering permits after: {one_year_ago}")
+        logger.info(f"\nThreshold Date for Filtering: {one_year_ago.strftime('%Y-%m-%d')}")
+        logger.info("Any permit with application date before this will be excluded.")
         
         # Count permits before filtering
         total_before = len(df)
         
+        # Log filtering decision for each permit
+        logger.info("\nDate Filtering Results:")
+        included_permits = []
+        for idx, row in df.iterrows():
+            permit_no = row['PERMITNO']
+            app_date = row['APPLICATION_DATE']
+            is_included = app_date >= one_year_ago
+            status = "INCLUDED" if is_included else "EXCLUDED"
+            logger.info(f"Permit {permit_no}: {app_date.strftime('%Y-%m-%d')} - {status}")
+            if is_included:
+                included_permits.append(idx)
+        
         # Apply date filter
-        df = df[df['APPLICATION_DATE'] >= one_year_ago]
+        df = df.loc[included_permits]
         
         # Count permits after filtering
         total_after = len(df)
-        logger.info(f"Filtered out {total_before - total_after} permits older than one year")
+        logger.info(f"\nFiltered out {total_before - total_after} permits older than one year")
+        logger.info(f"Remaining permits: {total_after}")
         
         if df.empty:
             logger.warning("No permits found within the last 12 months")
@@ -352,5 +376,76 @@ def main():
         ]
         print(df[display_cols].head().to_string())
 
+def test_date_filtering():
+    """
+    Test the date filtering logic with a sample dataset.
+    Includes permits from both within and outside the 12-month window.
+    """
+    logger.info("=== Running Date Filtering Test ===")
+    
+    # Create sample data
+    current_date = pd.Timestamp.now()
+    sample_data = {
+        'PERMITNO': [f'PERMIT-{i:03d}' for i in range(1, 11)],
+        'APPLICATION_DATE': [
+            # Within last 12 months
+            current_date - pd.DateOffset(days=30),    # 1 month ago
+            current_date - pd.DateOffset(months=3),   # 3 months ago
+            current_date - pd.DateOffset(months=6),   # 6 months ago
+            current_date - pd.DateOffset(months=9),   # 9 months ago
+            current_date - pd.DateOffset(months=11),  # 11 months ago
+            # Outside last 12 months
+            current_date - pd.DateOffset(months=13),  # 13 months ago
+            current_date - pd.DateOffset(months=15),  # 15 months ago
+            current_date - pd.DateOffset(months=18),  # 18 months ago
+            current_date - pd.DateOffset(months=24),  # 2 years ago
+            # Invalid date
+            None
+        ],
+        'PERMIT_TYPE': [
+            'Residential', 'Commercial', 'Industrial',
+            'Residential', 'Commercial', 'Industrial',
+            'Residential', 'Commercial', 'Industrial',
+            'Residential'
+        ],
+        'FOLDERNAME': [
+            '123 Main St', '456 Oak Ave', '789 Pine Rd',
+            '321 Elm St', '654 Maple Dr', '987 Cedar Ln',
+            '147 Birch Rd', '258 Spruce Ave', '369 Willow St',
+            '741 Ash Ln'
+        ]
+    }
+    
+    # Create DataFrame
+    df = pd.DataFrame(sample_data)
+    
+    logger.info("\nSample Dataset Created:")
+    logger.info(f"Total records: {len(df)}")
+    logger.info("\nOriginal Data:")
+    for idx, row in df.iterrows():
+        date_str = row['APPLICATION_DATE'].strftime('%Y-%m-%d') if pd.notna(row['APPLICATION_DATE']) else 'INVALID'
+        logger.info(f"Permit {row['PERMITNO']}: {date_str} - {row['PERMIT_TYPE']} - {row['FOLDERNAME']}")
+    
+    # Process the sample data
+    logger.info("\nProcessing sample data through transform_permit_data function...")
+    result = transform_permit_data(df)
+    
+    # Display results
+    if result['status'] == 'success':
+        logger.info("\nTransformation Results:")
+        logger.info(f"Total permits processed: {result['summary']['total_permits']}")
+        logger.info(f"Original records: {result['summary']['data_quality']['original_records']}")
+        logger.info(f"Invalid dates removed: {result['summary']['data_quality']['invalid_dates_removed']}")
+        logger.info(f"Records within time range: {result['summary']['data_quality']['records_within_time_range']}")
+        
+        logger.info("\nIncluded Permits:")
+        for permit in result['permits']:
+            logger.info(f"Permit {permit['Permit Number']}: {permit['Application Date']} - {permit['Permit Type']} - {permit['Property Address']}")
+    else:
+        logger.error(f"Transformation failed: {result['message']}")
+        if 'details' in result:
+            logger.error(f"Details: {result['details']}")
+
 if __name__ == "__main__":
-    main() 
+    # Run the test
+    test_date_filtering() 
