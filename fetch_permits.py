@@ -41,11 +41,11 @@ def fetch_permit_data():
         
         # Parse JSON response
         data = response.json()
-        logger.info(f"API Response received. Status code: {response.status_code}")
+        logger.info("API Response received. Status code: {}".format(response.status_code))
         
         # Extract features from the response
         features = data.get('features', [])
-        logger.info(f"Found {len(features)} features in the response")
+        logger.info("Found {} features in the response".format(len(features)))
         
         if not features:
             logger.warning("No permit data found in the response.")
@@ -63,39 +63,19 @@ def fetch_permit_data():
                     permit[field] = datetime.fromtimestamp(permit[field] / 1000)
             permits.append(permit)
         
-        logger.info(f"Successfully processed {len(permits)} permits")
+        logger.info("Successfully processed {} permits".format(len(permits)))
         
         # Create DataFrame
         df = pd.DataFrame(permits)
-        logger.info(f"Created DataFrame with shape: {df.shape}")
+        logger.info("Created DataFrame with shape: {}".format(df.shape))
         
         # Log column names for debugging
-        logger.info(f"DataFrame columns: {df.columns.tolist()}")
-        
-        # Reorder columns for better readability
-        important_cols = [
-            'PERMITNO', 'PERMIT_TYPE', 'PERMIT_STATUS', 'APPLICATION_DATE',
-            'ISSUE_DATE', 'CONSTRUCTION_VALUE', 'WORK_TYPE', 'SUB_WORK_TYPE',
-            'PERMIT_DESCRIPTION', 'TOTAL_UNITS', 'UNITS_CREATED'
-        ]
-        # Move important columns to front, keep the rest in original order
-        remaining_cols = [col for col in df.columns if col not in important_cols]
-        df = df[important_cols + remaining_cols]
-        
-        # Log sample of the data
-        logger.info("Sample of the first permit:")
-        logger.info(df.iloc[0].to_dict() if not df.empty else "DataFrame is empty")
+        logger.info("DataFrame columns: {}".format(df.columns.tolist()))
         
         return df
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error fetching data: {e}")
-        return None
-    except json.JSONDecodeError as e:
-        logger.error(f"Error parsing JSON response: {e}")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
+        logger.error("Error: {}".format(str(e)))
         return None
 
 def transform_permit_data(df):
@@ -135,12 +115,12 @@ def transform_permit_data(df):
         }
         
         # Log initial state
-        logger.info(f"Initial DataFrame shape: {df.shape}")
+        logger.info("Initial DataFrame shape: {}".format(df.shape))
         logger.info("Missing values before filling defaults:")
         for col in default_values.keys():
             if col in df.columns:
                 missing = df[col].isnull().sum()
-                logger.info(f"{col}: {missing} missing values")
+                logger.info("{}: {} missing values".format(col, missing))
         
         # Fill missing values with defaults
         for col, default_val in default_values.items():
@@ -168,18 +148,18 @@ def transform_permit_data(df):
             permit_no = row.get('PERMITNO', 'Unknown Permit')
             app_date = row['APPLICATION_DATE']
             if pd.isna(app_date):
-                logger.info(f"Permit {permit_no}: Invalid or missing date")
+                logger.info("Permit {}: Invalid or missing date".format(permit_no))
             else:
-                logger.info(f"Permit {permit_no}: {app_date.strftime('%Y-%m-%d')}")
+                logger.info("Permit {}: {}".format(permit_no, app_date.strftime('%Y-%m-%d')))
         
         # Log date conversion results
         invalid_dates = df['APPLICATION_DATE'].isnull().sum()
-        logger.info(f"\nFound {invalid_dates} invalid or missing dates")
+        logger.info("\nFound {} invalid or missing dates".format(invalid_dates))
         
         # Remove records with invalid dates
         df = df.dropna(subset=['APPLICATION_DATE'])
         records_removed = original_length - len(df)
-        logger.info(f"Removed {records_removed} records with invalid dates")
+        logger.info("Removed {} records with invalid dates".format(records_removed))
         
         if df.empty:
             logger.warning("All records were invalid after date validation")
@@ -187,13 +167,13 @@ def transform_permit_data(df):
                 'status': 'error',
                 'error_type': 'validation_error',
                 'message': 'No valid records after date validation',
-                'details': f'All {original_length} records had invalid dates'
+                'details': 'All {} records had invalid dates'.format(original_length)
             }
             
         # Step 3: Date Filtering
         logger.info("\n=== Step 3: Date Filtering ===")
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
-        logger.info(f"\nThreshold Date for Filtering: {one_year_ago.strftime('%Y-%m-%d')}")
+        logger.info("\nThreshold Date for Filtering: {}".format(one_year_ago.strftime('%Y-%m-%d')))
         logger.info("Any permit with application date before this will be excluded.")
         
         # Count permits before filtering
@@ -207,7 +187,8 @@ def transform_permit_data(df):
             app_date = row['APPLICATION_DATE']
             is_included = app_date >= one_year_ago
             status = "INCLUDED" if is_included else "EXCLUDED"
-            logger.info(f"Permit {permit_no}: {app_date.strftime('%Y-%m-%d')} - {status}")
+            logger.info("Permit {}: {} - {}".format(
+                permit_no, app_date.strftime('%Y-%m-%d'), status))
             if is_included:
                 included_permits.append(idx)
         
@@ -216,8 +197,8 @@ def transform_permit_data(df):
         
         # Count permits after filtering
         total_after = len(df)
-        logger.info(f"\nFiltered out {total_before - total_after} permits older than one year")
-        logger.info(f"Remaining permits: {total_after}")
+        logger.info("\nFiltered out {} permits older than one year".format(total_before - total_after))
+        logger.info("Remaining permits: {}".format(total_after))
         
         if df.empty:
             logger.warning("No permits found within the last 12 months")
@@ -386,7 +367,7 @@ def test_date_filtering():
     # Create sample data
     current_date = pd.Timestamp.now()
     sample_data = {
-        'PERMITNO': [f'PERMIT-{i:03d}' for i in range(1, 11)],
+        'PERMITNO': ['PERMIT-{:03d}'.format(i) for i in range(1, 11)],
         'APPLICATION_DATE': [
             # Within last 12 months
             current_date - pd.DateOffset(days=30),    # 1 month ago
@@ -413,6 +394,48 @@ def test_date_filtering():
             '321 Elm St', '654 Maple Dr', '987 Cedar Ln',
             '147 Birch Rd', '258 Spruce Ave', '369 Willow St',
             '741 Ash Ln'
+        ],
+        'CONSTRUCTION_VALUE': [
+            1500000,  # High value
+            750000,   # Medium value
+            250000,   # Low value
+            1200000,  # High value
+            600000,   # Medium value
+            300000,   # Low value
+            800000,   # Medium value
+            400000,   # Low value
+            900000,   # Medium value
+            None      # Missing value
+        ],
+        'WORK_TYPE': [
+            'New Construction', 'Renovation', 'Addition',
+            'Interior Alteration', 'Exterior Alteration', 'Repair',
+            'New Construction', 'Renovation', 'Addition',
+            'Repair'
+        ],
+        'PERMIT_STATUS': [
+            'Active', 'Pending', 'Approved',
+            'Active', 'Pending', 'Approved',
+            'Active', 'Pending', 'Approved',
+            'Pending'
+        ],
+        'SUB_WORK_TYPE': [
+            'Single Family', 'Office', 'Warehouse',
+            'Multi-Family', 'Retail', 'Manufacturing',
+            'Townhouse', 'Restaurant', 'Storage',
+            'Duplex'
+        ],
+        'PERMIT_DESCRIPTION': [
+            'New single family home construction',
+            'Office building renovation',
+            'Warehouse addition',
+            'Apartment building renovation',
+            'Retail store modification',
+            'Factory repair work',
+            'New townhouse development',
+            'Restaurant renovation',
+            'Storage facility expansion',
+            'Duplex conversion'
         ]
     }
     
@@ -420,11 +443,17 @@ def test_date_filtering():
     df = pd.DataFrame(sample_data)
     
     logger.info("\nSample Dataset Created:")
-    logger.info(f"Total records: {len(df)}")
+    logger.info("Total records: {}".format(len(df)))
     logger.info("\nOriginal Data:")
     for idx, row in df.iterrows():
         date_str = row['APPLICATION_DATE'].strftime('%Y-%m-%d') if pd.notna(row['APPLICATION_DATE']) else 'INVALID'
-        logger.info(f"Permit {row['PERMITNO']}: {date_str} - {row['PERMIT_TYPE']} - {row['FOLDERNAME']}")
+        logger.info("Permit {}: {} - {} - {} - ${}".format(
+            row['PERMITNO'],
+            date_str,
+            row['PERMIT_TYPE'],
+            row['FOLDERNAME'],
+            row['CONSTRUCTION_VALUE'] if pd.notna(row['CONSTRUCTION_VALUE']) else 'N/A'
+        ))
     
     # Process the sample data
     logger.info("\nProcessing sample data through transform_permit_data function...")
@@ -433,18 +462,28 @@ def test_date_filtering():
     # Display results
     if result['status'] == 'success':
         logger.info("\nTransformation Results:")
-        logger.info(f"Total permits processed: {result['summary']['total_permits']}")
-        logger.info(f"Original records: {result['summary']['data_quality']['original_records']}")
-        logger.info(f"Invalid dates removed: {result['summary']['data_quality']['invalid_dates_removed']}")
-        logger.info(f"Records within time range: {result['summary']['data_quality']['records_within_time_range']}")
+        logger.info("Total permits processed: {}".format(result['summary']['total_permits']))
+        logger.info("Original records: {}".format(result['summary']['data_quality']['original_records']))
+        logger.info("Invalid dates removed: {}".format(result['summary']['data_quality']['invalid_dates_removed']))
+        logger.info("Records within time range: {}".format(result['summary']['data_quality']['records_within_time_range']))
         
         logger.info("\nIncluded Permits:")
         for permit in result['permits']:
-            logger.info(f"Permit {permit['Permit Number']}: {permit['Application Date']} - {permit['Permit Type']} - {permit['Property Address']}")
+            logger.info("Permit {}: {} - {} - {} - {}".format(
+                permit['Permit Number'],
+                permit['Application Date'],
+                permit['Permit Type'],
+                permit['Property Address'],
+                permit['Construction Value']
+            ))
+            
+        logger.info("\nPriority Distribution:")
+        for priority, count in result['summary']['priority_distribution'].items():
+            logger.info("{}: {}".format(priority, count))
     else:
-        logger.error(f"Transformation failed: {result['message']}")
+        logger.error("Transformation failed: {}".format(result['message']))
         if 'details' in result:
-            logger.error(f"Details: {result['details']}")
+            logger.error("Details: {}".format(result['details']))
 
 if __name__ == "__main__":
     # Run the test
