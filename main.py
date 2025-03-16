@@ -514,6 +514,15 @@ def fetch_permits():
                 'error_type': 'api_error'
             }), 500
 
+        # Log DataFrame info for debugging
+        logger.info("DataFrame info:")
+        for column in raw_df.columns:
+            logger.info(f"Column {column}: dtype = {raw_df[column].dtype}")
+
+        # Convert all numeric columns to standard Python types
+        for column in raw_df.select_dtypes(include=['int64', 'float64']).columns:
+            raw_df[column] = raw_df[column].astype('float').astype('object')
+
         # Analyze dates in the raw data
         date_analysis = {}
         date_fields = ['APPLICATION_DATE', 'ISSUE_DATE', 'FINAL_DATE', 'EXPIRY_DATE', 'EXTRACTION_DATE']
@@ -525,48 +534,55 @@ def fetch_permits():
                     date_analysis[field] = {
                         'min_date': dates.min().isoformat() if isinstance(dates.min(), datetime) else str(dates.min()),
                         'max_date': dates.max().isoformat() if isinstance(dates.max(), datetime) else str(dates.max()),
-                        'unique_dates': int(len(dates.unique())),  # Convert numpy.int64 to int
-                        'null_count': int(raw_df[field].isnull().sum()),  # Convert numpy.int64 to int
-                        'last_12_months_count': int(len(dates[dates >= (datetime.now() - timedelta(days=365))]))  # Convert numpy.int64 to int
-                    }
+                        'unique_dates': int(len(dates.unique())),
+                        'null_count': int(raw_df[field].isnull().sum()),
+                        'last_12_months_count': int(len(dates[dates >= (datetime.now() - timedelta(days=365))]))}
 
-        # Convert raw DataFrame to JSON, handling datetime objects and numpy types
+        # Convert raw DataFrame to JSON, handling all special types
         raw_data = []
         for _, row in raw_df.iterrows():
             permit_dict = {}
             for column, value in row.items():
-                if isinstance(value, datetime):
-                    permit_dict[column] = value.isoformat()
-                elif pd.isna(value):  # Handle NaN/None values
-                    permit_dict[column] = None
-                elif hasattr(value, 'dtype'):  # Handle numpy types
-                    if np.issubdtype(value.dtype, np.integer):
+                try:
+                    if isinstance(value, datetime):
+                        permit_dict[column] = value.isoformat()
+                    elif pd.isna(value) or value is None:
+                        permit_dict[column] = None
+                    elif isinstance(value, (np.int64, np.int32, np.int16, np.int8)):
                         permit_dict[column] = int(value)
-                    elif np.issubdtype(value.dtype, np.floating):
+                    elif isinstance(value, (np.float64, np.float32)):
                         permit_dict[column] = float(value)
                     else:
                         permit_dict[column] = str(value)
-                else:
-                    permit_dict[column] = value
+                except Exception as e:
+                    logger.error(f"Error converting value in column {column}: {str(e)}")
+                    permit_dict[column] = str(value)
             raw_data.append(permit_dict)
 
-        logger.info(f"Successfully fetched {len(raw_data)} raw permits")
-        logger.info("Date analysis results:")
-        for field, analysis in date_analysis.items():
-            logger.info(f"{field}:")
-            logger.info(f"  Range: {analysis['min_date']} to {analysis['max_date']}")
-            logger.info(f"  Unique dates: {analysis['unique_dates']}")
-            logger.info(f"  Null values: {analysis['null_count']}")
-            logger.info(f"  Records in last 12 months: {analysis['last_12_months_count']}")
+        logger.info(f"Successfully processed {len(raw_data)} permits")
 
-        return jsonify({
+        response_data = {
             'status': 'success',
             'message': 'Raw permit data retrieved successfully',
-            'total_records': int(len(raw_data)),  # Convert numpy.int64 to int
-            'columns': list(raw_df.columns),  # Convert Index to list
+            'total_records': len(raw_data),
+            'columns': raw_df.columns.tolist(),
             'date_analysis': date_analysis,
             'data': raw_data
-        })
+        }
+
+        # Verify JSON serialization before returning
+        try:
+            json_response = jsonify(response_data)
+            return json_response
+        except TypeError as e:
+            logger.error(f"JSON serialization error: {str(e)}")
+            # If serialization fails, try to identify the problematic values
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to serialize response',
+                'error_type': 'serialization_error',
+                'error_details': str(e)
+            }), 500
 
     except Exception as e:
         logger.error(f"Unexpected error in fetch-permit-data route: {str(e)}", exc_info=True)
