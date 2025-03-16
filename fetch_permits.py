@@ -68,6 +68,61 @@ def fetch_permit_data():
         print(f"Unexpected error: {e}")
         return None
 
+def transform_permit_data(df):
+    """
+    Transform the permit data by filtering recent permits and adding lead priority.
+    
+    Args:
+        df (pandas.DataFrame): Raw permit data
+    
+    Returns:
+        pandas.DataFrame: Transformed permit data
+    """
+    if df is None or df.empty:
+        return None
+        
+    try:
+        # Filter for permits within the last year
+        one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
+        df = df[df['APPLICATION_DATE'] >= one_year_ago]
+        
+        # Extract key fields
+        key_fields = [
+            'PERMITNO', 'PERMIT_TYPE', 'APPLICATION_DATE', 'PERMIT_STATUS',
+            'CONSTRUCTION_VALUE', 'WORK_TYPE', 'SUB_WORK_TYPE',
+            'PERMIT_DESCRIPTION', 'TOTAL_UNITS', 'UNITS_CREATED'
+        ]
+        df = df[key_fields].copy()
+        
+        # Add Lead Priority based on permit types and work types
+        def determine_priority(row):
+            work_type = str(row['WORK_TYPE']).lower()
+            permit_type = str(row['PERMIT_TYPE']).lower()
+            
+            # High priority cases
+            if any(term in work_type for term in ['renovation', 'alteration', 'addition']):
+                return 'High'
+            elif 'new construction' in work_type:
+                return 'High'
+            elif 'residential' in permit_type:
+                return 'Medium'
+            else:
+                return 'Low'
+        
+        df['LEAD_PRIORITY'] = df.apply(determine_priority, axis=1)
+        
+        # Convert dates to ISO format strings for JSON serialization
+        df['APPLICATION_DATE'] = df['APPLICATION_DATE'].dt.strftime('%Y-%m-%d')
+        
+        # Format construction values
+        df['CONSTRUCTION_VALUE'] = df['CONSTRUCTION_VALUE'].apply(lambda x: f"${x:,.2f}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error transforming permit data: {e}")
+        return None
+
 def main():
     # Fetch the data
     df = fetch_permit_data()

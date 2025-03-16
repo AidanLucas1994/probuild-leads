@@ -497,55 +497,54 @@ def regenerate_data():
 @app.route('/fetch-permit-data')
 def fetch_permits():
     """
-    Fetch live permit data from the ArcGIS API and return as JSON.
-    Returns a JSON object containing either the permit data or an error message.
+    Fetch and transform permit data from the ArcGIS API.
+    Returns JSON with permit data and summary statistics.
     """
     try:
-        # Fetch permit data using the existing function
-        df = fetch_permit_data()
-        
-        if df is not None:
-            # Calculate summary statistics
-            summary = {
-                'total_permits': len(df),
-                'time_range': {
-                    'start': df['APPLICATION_DATE'].min().isoformat(),
-                    'end': df['APPLICATION_DATE'].max().isoformat()
-                },
-                'total_value': float(df['CONSTRUCTION_VALUE'].sum()),
-                'average_value': float(df['CONSTRUCTION_VALUE'].mean()),
-                'permit_type_distribution': df['PERMIT_TYPE'].value_counts().to_dict()
-            }
-            
-            # Convert DataFrame to dictionary, handling datetime objects
-            permits = []
-            for _, row in df.iterrows():
-                permit_dict = {}
-                for column in df.columns:
-                    value = row[column]
-                    if isinstance(value, datetime):
-                        permit_dict[column] = value.isoformat()
-                    else:
-                        permit_dict[column] = value
-                permits.append(permit_dict)
-            
-            # Return both summary statistics and permit data
-            return jsonify({
-                'status': 'success',
-                'summary': summary,
-                'permits': permits
-            })
-        else:
+        # Fetch raw permit data
+        raw_df = fetch_permit_data()
+        if raw_df is None:
             return jsonify({
                 'status': 'error',
-                'message': 'No permit data found'
+                'message': 'Failed to fetch permit data'
+            }), 500
+
+        # Transform the data
+        transformed_df = transform_permit_data(raw_df)
+        if transformed_df is None:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to transform permit data'
+            }), 500
+
+        if transformed_df.empty:
+            return jsonify({
+                'status': 'error',
+                'message': 'No permits found within the last year'
             }), 404
-            
+
+        # Calculate summary statistics
+        summary = {
+            'total_permits': len(transformed_df),
+            'priority_distribution': transformed_df['LEAD_PRIORITY'].value_counts().to_dict(),
+            'permit_type_distribution': transformed_df['PERMIT_TYPE'].value_counts().to_dict(),
+            'total_units': transformed_df['TOTAL_UNITS'].sum()
+        }
+
+        # Convert DataFrame to list of dictionaries for JSON serialization
+        permits = transformed_df.to_dict(orient='records')
+
+        return jsonify({
+            'status': 'success',
+            'summary': summary,
+            'permits': permits
+        })
+
     except Exception as e:
-        logger.error(f"Error in /fetch-permit-data: {str(e)}")
+        logger.error(f"Error in fetch-permit-data route: {e}")
         return jsonify({
             'status': 'error',
-            'message': f'Error fetching permit data: {str(e)}'
+            'message': str(e)
         }), 500
 
 if __name__ == '__main__':
