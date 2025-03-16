@@ -27,14 +27,34 @@ def fetch_permit_data():
     Fetch building permit data from the ArcGIS REST API endpoint.
     Returns a pandas DataFrame if successful, None otherwise.
     """
-    # API endpoint URL
-    url = ("https://services1.arcgis.com/qAo1OsXi67t7XgmS/arcgis/rest/services/"
-           "Building_Permits/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=json")
-    
     try:
+        # Convert dates to milliseconds since epoch (ArcGIS format)
+        start_date = int(pd.Timestamp('2024-01-01').timestamp() * 1000)
+        end_date = int(pd.Timestamp('2025-12-31').timestamp() * 1000)
+        
+        # Build the where clause for the query
+        where_clause = f"APPLICATION_DATE >= {start_date} AND APPLICATION_DATE <= {end_date}"
+        
+        # API endpoint URL with date filter
+        base_url = ("https://services1.arcgis.com/qAo1OsXi67t7XgmS/arcgis/rest/services/"
+                   "Building_Permits/FeatureServer/0/query")
+        
+        # Query parameters
+        params = {
+            'where': where_clause,
+            'outFields': '*',
+            'outSR': '4326',
+            'f': 'json'
+        }
+        
         # Send GET request
-        logger.info("Fetching data from API...")
-        response = requests.get(url)
+        logger.info("Fetching data from API with date filter...")
+        logger.info("Date range: {} to {}".format(
+            pd.Timestamp(start_date/1000, unit='s').strftime('%Y-%m-%d'),
+            pd.Timestamp(end_date/1000, unit='s').strftime('%Y-%m-%d')
+        ))
+        
+        response = requests.get(base_url, params=params)
         
         # Check if request was successful
         response.raise_for_status()
@@ -194,28 +214,29 @@ def transform_permit_data(df):
         # Enhanced date filtering section
         logger.info("\n=== Step 3: Date Filtering ===")
         
-        # Instead of using absolute dates, let's use relative dates from the data
-        latest_date = df['APPLICATION_DATE'].max()
-        relative_cutoff = latest_date - pd.DateOffset(years=1)
+        # Filter for 2024-2025 permits
+        start_date = pd.Timestamp('2024-01-01')
+        end_date = pd.Timestamp('2025-12-31')
         
         logger.info("\nDate Filtering Details:")
-        logger.info("Latest permit date: {}".format(latest_date.strftime('%Y-%m-%d')))
-        logger.info("Using relative cutoff date: {}".format(relative_cutoff.strftime('%Y-%m-%d')))
-        logger.info("Will include permits from {} to {}".format(
-            relative_cutoff.strftime('%Y-%m-%d'),
-            latest_date.strftime('%Y-%m-%d')
+        logger.info("Filtering for permits between {} and {}".format(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
         ))
 
         # Count permits before filtering
         total_before = len(df)
         
         # Apply date filter with detailed logging
-        recent_permits = df[df['APPLICATION_DATE'] >= relative_cutoff]
+        recent_permits = df[
+            (df['APPLICATION_DATE'] >= start_date) & 
+            (df['APPLICATION_DATE'] <= end_date)
+        ]
         total_after = len(recent_permits)
         
         logger.info("\nFiltering Results:")
         logger.info("Total permits before filtering: {}".format(total_before))
-        logger.info("Permits within last 12 months of data: {}".format(total_after))
+        logger.info("Permits in 2024-2025: {}".format(total_after))
         logger.info("Permits excluded: {}".format(total_before - total_after))
         
         if total_after == 0:
@@ -233,12 +254,13 @@ def transform_permit_data(df):
         df = recent_permits
 
         if df.empty:
-            logger.warning("No permits found within the relative date range")
+            logger.warning("No permits found for 2024-2025")
             return {
                 'status': 'warning',
-                'message': 'No permits found in relative date range',
-                'details': 'No permits found within 12 months of the latest permit ({})'.format(
-                    latest_date.strftime('%Y-%m-%d')),
+                'message': 'No permits found for 2024-2025',
+                'details': 'No permits found between {} and {}'.format(
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d')),
                 'metadata': {
                     'total_records_processed': original_length,
                     'invalid_dates_removed': records_removed,
@@ -246,7 +268,8 @@ def transform_permit_data(df):
                     'date_range': {
                         'earliest': min_date.strftime('%Y-%m-%d'),
                         'latest': max_date.strftime('%Y-%m-%d'),
-                        'relative_cutoff': relative_cutoff.strftime('%Y-%m-%d')
+                        'filter_start': start_date.strftime('%Y-%m-%d'),
+                        'filter_end': end_date.strftime('%Y-%m-%d')
                     }
                 }
             }
@@ -348,7 +371,7 @@ def transform_permit_data(df):
             'metadata': {
                 'timestamp': datetime.now().isoformat(),
                 'filters_applied': {
-                    'date_range': f"Last 12 months (from {relative_cutoff.strftime('%Y-%m-%d')})",
+                    'date_range': f"2024-2025",
                     'fields_selected': list(df_final.columns)
                 }
             }
