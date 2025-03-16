@@ -8,8 +8,6 @@ import os
 import sys
 import logging
 from models import db, Lead
-import pandas as pd
-import json
 
 # Configure logging
 logging.basicConfig(
@@ -70,7 +68,7 @@ try:
 except Exception as e:
     logger.error(f"Error creating database tables: {e}")
 
-def generate_sample_data(num_samples=15):
+def generate_sample_data(num_samples=25):
     """Generate simulated building permit data."""
     project_types = [
         'Residential Building (House)',
@@ -88,13 +86,13 @@ def generate_sample_data(num_samples=15):
         'Renovation'
     ]
     
-    sub_work_types = [
-        'Single Detached Dwelling',
-        'Commercial',
-        'Industrial',
-        'Multi-Unit Residential',
-        'Office Building'
-    ]
+    sub_work_types = {
+        'Residential Building (House)': ['Single Detached Dwelling', 'Semi-Detached Dwelling', 'Townhouse'],
+        'Commercial Building': ['Office Building', 'Retail Store', 'Restaurant', 'Hotel'],
+        'Industrial Building': ['Warehouse', 'Manufacturing Facility', 'Distribution Center'],
+        'Residential Alteration': ['Kitchen Renovation', 'Bathroom Renovation', 'Basement Finishing'],
+        'Non-Residential Alteration': ['Office Renovation', 'Store Renovation', 'Industrial Upgrade']
+    }
     
     locations = [
         'Toronto, ON', 'Vancouver, BC', 'Montreal, QC', 'Calgary, AB',
@@ -102,39 +100,100 @@ def generate_sample_data(num_samples=15):
         'Hamilton, ON', 'Victoria, BC', 'Halifax, NS', 'Saskatoon, SK'
     ]
     
-    statuses = ['Pending', 'Approved', 'In Review', 'Closed', 'Expired']
+    statuses = {
+        'Pending': 0.2,
+        'Approved': 0.4,
+        'In Review': 0.2,
+        'Closed': 0.15,
+        'Expired': 0.05
+    }
     
-    # Generate random dates within the last 30 days
+    # Generate random dates within the last 90 days
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
+    start_date = end_date - timedelta(days=90)
     
     sample_data = []
     for i in range(num_samples):
+        # Select project type and related sub work type
+        project_type = random.choice(project_types)
+        sub_work_type = random.choice(sub_work_types[project_type])
+        
+        # Generate dates
         submission_date = start_date + timedelta(
             seconds=random.randint(0, int((end_date - start_date).total_seconds()))
         )
         
-        # Generate random coordinates in Canada
-        lat = random.uniform(43.0, 50.0)
-        lon = random.uniform(-123.0, -79.0)
+        # Status based on weighted probabilities
+        status = random.choices(list(statuses.keys()), list(statuses.values()))[0]
         
-        # Generate random construction value
-        construction_value = random.randint(10000, 2000000)
+        # Generate issue date based on status
+        issue_date = None
+        if status in ['Approved', 'Closed']:
+            issue_date = submission_date + timedelta(days=random.randint(5, 15))
+        
+        # Generate expiry date based on status
+        expiry_date = None
+        if status != 'Expired':
+            expiry_date = submission_date + timedelta(days=365)
+        else:
+            expiry_date = submission_date + timedelta(days=random.randint(30, 60))
+        
+        # Generate coordinates based on location
+        coordinates = {
+            'Toronto, ON': (43.6532, -79.3832),
+            'Vancouver, BC': (49.2827, -123.1207),
+            'Montreal, QC': (45.5017, -73.5673),
+            'Calgary, AB': (51.0447, -114.0719),
+            'Ottawa, ON': (45.4215, -75.6972),
+            'Edmonton, AB': (53.5461, -113.4938),
+            'Winnipeg, MB': (49.8951, -97.1384),
+            'Quebec City, QC': (46.8139, -71.2080),
+            'Hamilton, ON': (43.2557, -79.8711),
+            'Victoria, BC': (48.4284, -123.3656),
+            'Halifax, NS': (44.6488, -63.5752),
+            'Saskatoon, SK': (52.1332, -106.6700)
+        }
+        
+        location = random.choice(locations)
+        base_lat, base_lon = coordinates[location]
+        lat = base_lat + random.uniform(-0.05, 0.05)
+        lon = base_lon + random.uniform(-0.05, 0.05)
+        
+        # Generate construction value based on project type
+        base_values = {
+            'Residential Building (House)': (500000, 2000000),
+            'Commercial Building': (1000000, 5000000),
+            'Industrial Building': (2000000, 10000000),
+            'Residential Alteration': (50000, 300000),
+            'Non-Residential Alteration': (100000, 1000000)
+        }
+        min_value, max_value = base_values[project_type]
+        construction_value = random.randint(min_value, max_value)
+        
+        # Generate units based on project type
+        total_units = 1
+        units_created = 0
+        if 'Residential' in project_type:
+            if 'House' in project_type:
+                total_units = random.randint(1, 3)
+            else:
+                total_units = 1
+            units_created = random.randint(0, total_units)
         
         lead = Lead(
             permit_number=f'BP{datetime.now().year}{i+1:04d}',
-            project_type=random.choice(project_types),
-            permit_status=random.choice(statuses),
-            permit_description=f'New {random.choice(sub_work_types).lower()} project',
+            project_type=project_type,
+            permit_status=status,
+            permit_description=f'New {sub_work_type.lower()} project',
             submission_date=submission_date,
-            issue_date=submission_date + timedelta(days=random.randint(5, 15)) if random.random() > 0.3 else None,
-            expiry_date=submission_date + timedelta(days=365),
-            location=random.choice(locations),
+            issue_date=issue_date,
+            expiry_date=expiry_date,
+            location=location,
             work_type=random.choice(work_types),
-            sub_work_type=random.choice(sub_work_types),
+            sub_work_type=sub_work_type,
             construction_value=construction_value,
-            total_units=random.randint(1, 10),
-            units_created=random.randint(0, 5),
+            total_units=total_units,
+            units_created=units_created,
             legal_description=f'PLAN {random.randint(1000, 9999)} LOT {random.randint(1, 999)}',
             latitude=lat,
             longitude=lon,
@@ -175,225 +234,190 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    try:
-        # Check if pandas is available
-        try:
-            import pandas as pd
-            use_pandas = True
-        except ImportError:
-            use_pandas = False
-            import csv
-            from datetime import datetime
+    # Get filter parameters
+    project_type_filter = request.args.get('project_type')
+    location_filter = request.args.get('location')
+    status_filter = request.args.get('status')
+    work_type_filter = request.args.get('work_type')
+    min_value = request.args.get('min_value', type=float)
+    max_value = request.args.get('max_value', type=float)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
 
-        # Check if the cleaned data file exists
-        if not os.path.exists('cleaned_kitchener_permits.csv'):
-            flash('No permit data found. Please ensure the data file exists.', 'error')
-            return render_template('dashboard.html', 
-                                leads=[],
-                                total_leads=0,
-                                total_value="$0.00",
-                                avg_value="$0.00",
-                                project_types={},
-                                work_types={},
-                                statuses={},
-                                available_filters={
-                                    'project_types': [],
-                                    'locations': [],
-                                    'statuses': [],
-                                    'work_types': [],
-                                    'value_range': {'min': 0, 'max': 0}
-                                })
+    # Start with base query
+    query = Lead.query
 
-        if use_pandas:
-            # Use pandas for data processing
-            df = pd.read_csv('cleaned_kitchener_permits.csv')
-            
-            # Apply filters from query parameters
-            project_type = request.args.get('project_type')
-            location = request.args.get('location')
-            status = request.args.get('status')
-            work_type = request.args.get('work_type')
-            min_value = request.args.get('min_value', type=float)
-            max_value = request.args.get('max_value', type=float)
-            date_from = request.args.get('date_from')
-            date_to = request.args.get('date_to')
+    # Apply filters
+    if project_type_filter:
+        query = query.filter_by(project_type=project_type_filter)
+    if location_filter:
+        query = query.filter_by(location=location_filter)
+    if status_filter:
+        query = query.filter_by(permit_status=status_filter)
+    if work_type_filter:
+        query = query.filter_by(work_type=work_type_filter)
+    if min_value is not None:
+        query = query.filter(Lead.construction_value >= min_value)
+    if max_value is not None:
+        query = query.filter(Lead.construction_value <= max_value)
+    if date_from:
+        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
+    if date_to:
+        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
 
-            # Convert date columns to datetime
-            df['submission_date'] = pd.to_datetime(df['submission_date'])
-            
-            # Apply filters if they exist
-            if project_type:
-                df = df[df['project_type'] == project_type]
-            if location:
-                df = df[df['location'].str.contains(location, case=False, na=False)]
-            if status:
-                df = df[df['permit_status'] == status]
-            if work_type:
-                df = df[df['work_type'] == work_type]
-            if min_value:
-                df = df[df['construction_value'] >= min_value]
-            if max_value:
-                df = df[df['construction_value'] <= max_value]
-            if date_from:
-                df = df[df['submission_date'] >= date_from]
-            if date_to:
-                df = df[df['submission_date'] <= date_to]
+    # Execute query
+    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
+    
+    # If no leads exist, generate and add sample data
+    if not filtered_leads and not any([project_type_filter, location_filter, status_filter, 
+                                     work_type_filter, min_value, max_value, date_from, date_to]):
+        sample_leads = generate_sample_data()
+        for lead in sample_leads:
+            db.session.add(lead)
+        db.session.commit()
+        filtered_leads = Lead.query.order_by(Lead.submission_date.desc()).all()
 
-            # Calculate statistics
-            total_leads = len(df)
-            total_value = f"${df['construction_value'].sum():,.2f}"
-            avg_value = f"${df['construction_value'].mean():,.2f}"
-
-            # Get unique values for filters
-            available_filters = {
-                'project_types': sorted(df['project_type'].unique().tolist()),
-                'locations': sorted(df['location'].unique().tolist()),
-                'statuses': sorted(df['permit_status'].unique().tolist()),
-                'work_types': sorted(df['work_type'].unique().tolist()),
-                'value_range': {
-                    'min': float(df['construction_value'].min()),
-                    'max': float(df['construction_value'].max())
-                }
-            }
-
-            # Calculate statistics by category
-            project_types = df['project_type'].value_counts().to_dict()
-            work_types = df['work_type'].value_counts().to_dict()
-            statuses = df['permit_status'].value_counts().to_dict()
-
-            # Convert DataFrame to list of dictionaries for template
-            leads = df.to_dict('records')
-
-        else:
-            # Fallback to CSV processing
-            leads = []
-            project_types = {}
-            work_types = {}
-            statuses = {}
-            total_value = 0
-            
-            with open('cleaned_kitchener_permits.csv', 'r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    # Convert construction value to float
-                    try:
-                        row['construction_value'] = float(row['construction_value'])
-                    except (ValueError, TypeError):
-                        row['construction_value'] = 0
-                    
-                    # Apply filters
-                    if (request.args.get('project_type') and 
-                        row['project_type'] != request.args.get('project_type')):
-                        continue
-                    if (request.args.get('location') and 
-                        request.args.get('location').lower() not in row['location'].lower()):
-                        continue
-                    if (request.args.get('status') and 
-                        row['permit_status'] != request.args.get('status')):
-                        continue
-                    if (request.args.get('work_type') and 
-                        row['work_type'] != request.args.get('work_type')):
-                        continue
-                    
-                    # Update statistics
-                    project_types[row['project_type']] = project_types.get(row['project_type'], 0) + 1
-                    work_types[row['work_type']] = work_types.get(row['work_type'], 0) + 1
-                    statuses[row['permit_status']] = statuses.get(row['permit_status'], 0) + 1
-                    total_value += row['construction_value']
-                    leads.append(row)
-
-            total_leads = len(leads)
-            avg_value = total_value / total_leads if total_leads > 0 else 0
-            
-            # Format currency values
-            total_value = f"${total_value:,.2f}"
-            avg_value = f"${avg_value:,.2f}"
-            
-            # Get unique values for filters
-            available_filters = {
-                'project_types': sorted(list(project_types.keys())),
-                'locations': sorted(list(set(lead['location'] for lead in leads))),
-                'statuses': sorted(list(statuses.keys())),
-                'work_types': sorted(list(work_types.keys())),
-                'value_range': {
-                    'min': min(lead['construction_value'] for lead in leads) if leads else 0,
-                    'max': max(lead['construction_value'] for lead in leads) if leads else 0
-                }
-            }
-
-        return render_template('dashboard.html',
-                            leads=leads,
-                            total_leads=total_leads,
-                            total_value=total_value,
-                            avg_value=avg_value,
-                            project_types=project_types,
-                            work_types=work_types,
-                            statuses=statuses,
-                            available_filters=available_filters)
-
-    except Exception as e:
-        logger.error(f"Dashboard error: {str(e)}")
-        flash(f'Error loading dashboard: {str(e)}', 'error')
-        return render_template('dashboard.html', 
-                            leads=[],
-                            total_leads=0,
-                            total_value="$0.00",
-                            avg_value="$0.00",
-                            project_types={},
-                            work_types={},
-                            statuses={},
-                            available_filters={
-                                'project_types': [],
-                                'locations': [],
-                                'statuses': [],
-                                'work_types': [],
-                                'value_range': {'min': 0, 'max': 0}
-                            })
+    # Calculate statistics
+    total_leads = len(filtered_leads)
+    total_value = sum(lead.construction_value for lead in filtered_leads)
+    avg_value = total_value / total_leads if total_leads > 0 else 0
+    
+    # Count by various categories
+    project_types = Counter(lead.project_type for lead in filtered_leads)
+    work_types = Counter(lead.work_type for lead in filtered_leads)
+    statuses = Counter(lead.permit_status for lead in filtered_leads)
+    
+    # Get unique values for filter dropdowns from all leads
+    all_leads = Lead.query.all()
+    available_filters = {
+        'project_types': sorted(set(lead.project_type for lead in all_leads)),
+        'locations': sorted(set(lead.location for lead in all_leads)),
+        'statuses': sorted(set(lead.permit_status for lead in all_leads)),
+        'work_types': sorted(set(lead.work_type for lead in all_leads)),
+        'value_range': {
+            'min': min(lead.construction_value for lead in all_leads) if all_leads else 0,
+            'max': max(lead.construction_value for lead in all_leads) if all_leads else 0
+        }
+    }
+    
+    return render_template('dashboard.html',
+                         leads=filtered_leads,
+                         total_leads=total_leads,
+                         total_value=f"CAD ${total_value:,.2f}",
+                         avg_value=f"CAD ${avg_value:,.2f}",
+                         project_types=dict(project_types),
+                         work_types=dict(work_types),
+                         statuses=dict(statuses),
+                         available_filters=available_filters,
+                         request=request)
 
 @app.route('/download-csv')
 def download_csv():
-    try:
-        # Apply filters from query parameters
-        df = pd.read_csv('cleaned_kitchener_permits.csv')
-        
-        # Apply the same filters as the dashboard
-        project_type = request.args.get('project_type')
-        location = request.args.get('location')
-        status = request.args.get('status')
-        work_type = request.args.get('work_type')
-        min_value = request.args.get('min_value', type=float)
-        max_value = request.args.get('max_value', type=float)
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
+    # Get filter parameters (same as dashboard)
+    project_type_filter = request.args.get('project_type')
+    location_filter = request.args.get('location')
+    status_filter = request.args.get('status')
+    work_type_filter = request.args.get('work_type')
+    min_value = request.args.get('min_value', type=float)
+    max_value = request.args.get('max_value', type=float)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
 
-        if project_type:
-            df = df[df['project_type'] == project_type]
-        if location:
-            df = df[df['location'].str.contains(location, case=False, na=False)]
-        if status:
-            df = df[df['permit_status'] == status]
-        if work_type:
-            df = df[df['work_type'] == work_type]
-        if min_value:
-            df = df[df['construction_value'] >= min_value]
-        if max_value:
-            df = df[df['construction_value'] <= max_value]
-        if date_from:
-            df = df[df['submission_date'] >= date_from]
-        if date_to:
-            df = df[df['submission_date'] <= date_to]
+    # Start with base query
+    query = Lead.query
 
-        # Create a temporary file for download
-        temp_file = 'filtered_permits.csv'
-        df.to_csv(temp_file, index=False)
-        
-        return send_file(temp_file,
-                        mimetype='text/csv',
-                        as_attachment=True,
-                        download_name='filtered_permits.csv')
-    except Exception as e:
-        flash(f'Error downloading CSV: {str(e)}', 'error')
-        return redirect(url_for('dashboard'))
+    # Apply filters
+    if project_type_filter:
+        query = query.filter_by(project_type=project_type_filter)
+    if location_filter:
+        query = query.filter_by(location=location_filter)
+    if status_filter:
+        query = query.filter_by(permit_status=status_filter)
+    if work_type_filter:
+        query = query.filter_by(work_type=work_type_filter)
+    if min_value is not None:
+        query = query.filter(Lead.construction_value >= min_value)
+    if max_value is not None:
+        query = query.filter(Lead.construction_value <= max_value)
+    if date_from:
+        query = query.filter(Lead.submission_date >= datetime.strptime(date_from, '%Y-%m-%d'))
+    if date_to:
+        query = query.filter(Lead.submission_date <= datetime.strptime(date_to, '%Y-%m-%d'))
+
+    # Execute query
+    filtered_leads = query.order_by(Lead.submission_date.desc()).all()
+
+    # Create a StringIO object to write CSV data
+    si = io.StringIO()
+    writer = csv.writer(si)
+    
+    # Write headers
+    headers = [
+        'Permit Number',
+        'Project Type',
+        'Status',
+        'Description',
+        'Submission Date',
+        'Issue Date',
+        'Expiry Date',
+        'Location',
+        'Work Type',
+        'Sub Work Type',
+        'Construction Value',
+        'Total Units',
+        'Units Created',
+        'Legal Description',
+        'Latitude',
+        'Longitude',
+        'Owner',
+        'Applicant',
+        'Contractor',
+        'Contractor Contact'
+    ]
+    writer.writerow(headers)
+    
+    # Write data rows
+    for lead in filtered_leads:
+        row = [
+            lead.permit_number,
+            lead.project_type,
+            lead.permit_status,
+            lead.permit_description,
+            lead.submission_date.strftime('%Y-%m-%d %H:%M') if lead.submission_date else '',
+            lead.issue_date.strftime('%Y-%m-%d %H:%M') if lead.issue_date else '',
+            lead.expiry_date.strftime('%Y-%m-%d %H:%M') if lead.expiry_date else '',
+            lead.location,
+            lead.work_type,
+            lead.sub_work_type,
+            f"${lead.construction_value:,.2f}" if lead.construction_value else '',
+            lead.total_units,
+            lead.units_created,
+            lead.legal_description,
+            lead.latitude,
+            lead.longitude,
+            lead.owner,
+            lead.applicant,
+            lead.contractor,
+            lead.contractor_contact
+        ]
+        writer.writerow(row)
+    
+    # Create the response
+    output = si.getvalue()
+    si.close()
+    
+    # Create a new StringIO object with the output
+    mem = io.BytesIO()
+    mem.write(output.encode('utf-8'))
+    mem.seek(0)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(
+        mem,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=f'construction_leads_{timestamp}.csv'
+    )
 
 @app.route('/api/leads')
 def api_leads():
@@ -434,12 +458,8 @@ def api_leads():
 
 @app.route('/api/leads/<int:lead_id>')
 def get_lead_details(lead_id):
-    try:
-        df = pd.read_csv('cleaned_kitchener_permits.csv')
-        lead = df[df['permit_number'] == lead_id].to_dict('records')[0]
-        return jsonify(lead)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 404
+    lead = Lead.query.get_or_404(lead_id)
+    return jsonify(lead.to_dict())
 
 @app.route('/health')
 def health_check():
@@ -450,6 +470,28 @@ def health_check():
         'static_dir': os.path.exists(static_dir),
         'database': 'connected' if db.engine.execute('SELECT 1').scalar() else 'error'
     })
+
+@app.route('/regenerate-data')
+def regenerate_data():
+    """Route to manually regenerate sample data."""
+    try:
+        # Clear existing data
+        db.session.query(Lead).delete()
+        db.session.commit()
+        
+        # Generate and add new sample data
+        sample_leads = generate_sample_data(25)  # Generate 25 sample leads
+        for lead in sample_leads:
+            db.session.add(lead)
+        db.session.commit()
+        
+        flash('Sample data regenerated successfully!', 'success')
+    except Exception as e:
+        logger.error(f"Error regenerating sample data: {e}")
+        flash('Error regenerating sample data.', 'error')
+        db.session.rollback()
+    
+    return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
     # Log startup information
