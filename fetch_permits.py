@@ -70,13 +70,13 @@ def fetch_permit_data():
 
 def transform_permit_data(df):
     """
-    Transform the permit data by filtering recent permits and adding lead priority.
+    Transform raw permit data by filtering recent permits and adding lead priority.
     
     Args:
-        df (pandas.DataFrame): Raw permit data
+        df (pandas.DataFrame): Raw permit data DataFrame
     
     Returns:
-        pandas.DataFrame: Transformed permit data
+        dict: JSON object containing transformed permit data and metadata
     """
     if df is None or df.empty:
         return None
@@ -86,38 +86,73 @@ def transform_permit_data(df):
         one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
         df = df[df['APPLICATION_DATE'] >= one_year_ago]
         
-        # Extract key fields
-        key_fields = [
-            'PERMITNO', 'PERMIT_TYPE', 'APPLICATION_DATE', 'PERMIT_STATUS',
-            'CONSTRUCTION_VALUE', 'WORK_TYPE', 'SUB_WORK_TYPE',
-            'PERMIT_DESCRIPTION', 'TOTAL_UNITS', 'UNITS_CREATED'
-        ]
-        df = df[key_fields].copy()
+        # Extract and rename key fields
+        key_fields = {
+            'PERMITNO': 'Permit Number',
+            'PERMIT_TYPE': 'Permit Type',
+            'APPLICATION_DATE': 'Application Date',
+            'PERMIT_STATUS': 'Status',
+            'CONSTRUCTION_VALUE': 'Construction Value',
+            'WORK_TYPE': 'Work Type',
+            'SUB_WORK_TYPE': 'Sub Work Type',
+            'PERMIT_DESCRIPTION': 'Description'
+        }
+        
+        df = df[list(key_fields.keys())].copy()
+        df = df.rename(columns=key_fields)
         
         # Add Lead Priority based on permit types and work types
         def determine_priority(row):
-            work_type = str(row['WORK_TYPE']).lower()
-            permit_type = str(row['PERMIT_TYPE']).lower()
+            work_type = str(row['Work Type']).lower()
+            permit_type = str(row['Permit Type']).lower()
             
             # High priority cases
             if any(term in work_type for term in ['renovation', 'alteration', 'addition']):
                 return 'High'
-            elif 'new construction' in work_type:
+            elif 'new construction' in work_type and 'residential' in permit_type:
                 return 'High'
+            # Medium priority cases
             elif 'residential' in permit_type:
                 return 'Medium'
+            elif 'commercial' in permit_type and 'new construction' in work_type:
+                return 'Medium'
+            # Low priority cases
             else:
                 return 'Low'
         
-        df['LEAD_PRIORITY'] = df.apply(determine_priority, axis=1)
+        df['Lead Priority'] = df.apply(determine_priority, axis=1)
         
-        # Convert dates to ISO format strings for JSON serialization
-        df['APPLICATION_DATE'] = df['APPLICATION_DATE'].dt.strftime('%Y-%m-%d')
+        # Format dates and values
+        df['Application Date'] = df['Application Date'].dt.strftime('%Y-%m-%d')
+        df['Construction Value'] = df['Construction Value'].apply(lambda x: f"${x:,.2f}")
         
-        # Format construction values
-        df['CONSTRUCTION_VALUE'] = df['CONSTRUCTION_VALUE'].apply(lambda x: f"${x:,.2f}")
+        # Calculate summary statistics
+        summary = {
+            'total_permits': len(df),
+            'priority_distribution': df['Lead Priority'].value_counts().to_dict(),
+            'permit_type_distribution': df['Permit Type'].value_counts().to_dict(),
+            'date_range': {
+                'start': df['Application Date'].min(),
+                'end': df['Application Date'].max()
+            }
+        }
         
-        return df
+        # Convert DataFrame to list of dictionaries
+        permits = df.to_dict(orient='records')
+        
+        # Return JSON structure
+        return {
+            'status': 'success',
+            'summary': summary,
+            'permits': permits,
+            'metadata': {
+                'timestamp': datetime.now().isoformat(),
+                'filters_applied': {
+                    'date_range': f"Last 12 months (from {one_year_ago.strftime('%Y-%m-%d')})",
+                    'fields_selected': list(key_fields.values())
+                }
+            }
+        }
         
     except Exception as e:
         print(f"Error transforming permit data: {e}")
