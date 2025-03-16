@@ -19,357 +19,228 @@
         </div>
 
         <div class="dashboard-header">
-            <h2>Overview Statistics</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3>Total Leads</h3>
-                    <div class="stat-value">{{ total_leads }}</div>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Construction Value</h3>
-                    <div class="stat-value">{{ total_value }}</div>
-                </div>
-                <div class="stat-card">
-                    <h3>Average Value</h3>
-                    <div class="stat-value">{{ avg_value }}</div>
-                </div>
-            </div>
-            <div class="stats-details">
-                <div class="stat-group">
-                    <h4>By Project Type</h4>
-                    <div class="stat-list">
-                        {% for type, count in project_types.items() %}
-                        <div class="stat-item">
-                            <span class="stat-label">{{ type }}</span>
-                            <span class="stat-count">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div class="stat-group">
-                    <h4>By Work Type</h4>
-                    <div class="stat-list">
-                        {% for type, count in work_types.items() %}
-                        <div class="stat-item">
-                            <span class="stat-label">{{ type }}</span>
-                            <span class="stat-count">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <div class="stat-group">
-                    <h4>By Status</h4>
-                    <div class="stat-list">
-                        {% for status, count in statuses.items() %}
-                        <div class="stat-item">
-                            <span class="stat-label">{{ status }}</span>
-                            <span class="stat-count">{{ count }}</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
+            <h2>Contractor Summary</h2>
+            <div class="stats-grid" id="contractor-stats">
+                <!-- Will be populated by JavaScript -->
             </div>
         </div>
 
-        <div class="filter-section">
-            <h3>Filter Leads</h3>
-            <p class="filter-description">Refine your leads view using the filters below</p>
-            <form method="GET" action="{{ url_for('dashboard') }}" class="filter-form">
-                <div class="filter-grid">
-                    <div class="filter-group">
-                        <label for="project_type">Project Type</label>
-                        <select id="project_type" name="project_type">
-                            <option value="">All Types</option>
-                            {% for type in available_filters.project_types %}
-                            <option value="{{ type }}" {% if request.args.get('project_type') == type %}selected{% endif %}>
-                                {{ type }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="location">Location</label>
-                        <select id="location" name="location">
-                            <option value="">All Locations</option>
-                            {% for location in available_filters.locations %}
-                            <option value="{{ location }}" {% if request.args.get('location') == location %}selected{% endif %}>
-                                {{ location }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="status">Status</label>
-                        <select id="status" name="status">
-                            <option value="">All Statuses</option>
-                            {% for status in available_filters.statuses %}
-                            <option value="{{ status }}" {% if request.args.get('status') == status %}selected{% endif %}>
-                                {{ status }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="work_type">Work Type</label>
-                        <select id="work_type" name="work_type">
-                            <option value="">All Work Types</option>
-                            {% for type in available_filters.work_types %}
-                            <option value="{{ type }}" {% if request.args.get('work_type') == type %}selected{% endif %}>
-                                {{ type }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="min_value">Min Value (CAD)</label>
-                        <input type="number" id="min_value" name="min_value" 
-                               value="{{ request.args.get('min_value', '') }}"
-                               min="{{ available_filters.value_range.min }}"
-                               step="1000">
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="max_value">Max Value (CAD)</label>
-                        <input type="number" id="max_value" name="max_value"
-                               value="{{ request.args.get('max_value', '') }}"
-                               max="{{ available_filters.value_range.max }}"
-                               step="1000">
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="date_from">From Date</label>
-                        <input type="date" id="date_from" name="date_from"
-                               value="{{ request.args.get('date_from', '') }}">
-                    </div>
-
-                    <div class="filter-group">
-                        <label for="date_to">To Date</label>
-                        <input type="date" id="date_to" name="date_to"
-                               value="{{ request.args.get('date_to', '') }}">
-                    </div>
-                </div>
-
-                <div class="filter-actions">
-                    <button type="submit" class="filter-btn">Apply Filters</button>
-                    <a href="{{ url_for('dashboard') }}" class="reset-btn">Reset</a>
-                    <a href="{{ url_for('download_csv') }}{% if request.args %}?{{ request.query_string.decode() }}{% endif %}" 
-                       class="download-btn">
-                        Download CSV
-                    </a>
-                </div>
-            </form>
-        </div>
-
-        <div class="leads-section">
-            <div class="view-controls">
-                <button class="view-btn active" data-view="table">Table View</button>
-                <button class="view-btn" data-view="cards">Card View</button>
-            </div>
-
-            <div class="view-container">
-                <div class="table-view active">
-                    <div class="table-container">
-                        <table class="leads-table">
-                            <thead>
-                                <tr>
-                                    <th>Permit #</th>
-                                    <th>Project Type</th>
-                                    <th>Status</th>
-                                    <th>Location</th>
-                                    <th>Work Type</th>
-                                    <th>Value</th>
-                                    <th>Submission Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for lead in leads %}
-                                <tr>
-                                    <td>{{ lead.permit_number }}</td>
-                                    <td>
-                                        <span class="project-badge">{{ lead.project_type }}</span>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-{{ lead.permit_status.lower() }}">
-                                            {{ lead.permit_status }}
-                                        </span>
-                                    </td>
-                                    <td>{{ lead.location }}</td>
-                                    <td>{{ lead.work_type }}</td>
-                                    <td>${{ "{:,.2f}".format(lead.construction_value) }}</td>
-                                    <td>{{ lead.submission_date.strftime('%Y-%m-%d') }}</td>
-                                    <td>
-                                        <button class="details-btn" data-lead-id="{{ lead.id }}">
-                                            View Details
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="cards-view">
-                    <div class="cards-grid">
-                        {% for lead in leads %}
-                        <div class="lead-card">
-                            <div class="card-header">
-                                <span class="permit-number">{{ lead.permit_number }}</span>
-                                <span class="status-badge status-{{ lead.permit_status.lower() }}">
-                                    {{ lead.permit_status }}
-                                </span>
-                            </div>
-                            <div class="card-body">
-                                <div class="card-row">
-                                    <strong>Project Type:</strong>
-                                    <span>{{ lead.project_type }}</span>
-                                </div>
-                                <div class="card-row">
-                                    <strong>Location:</strong>
-                                    <span>{{ lead.location }}</span>
-                                </div>
-                                <div class="card-row">
-                                    <strong>Work Type:</strong>
-                                    <span>{{ lead.work_type }}</span>
-                                </div>
-                                <div class="card-row">
-                                    <strong>Value:</strong>
-                                    <span>${{ "{:,.2f}".format(lead.construction_value) }}</span>
-                                </div>
-                                <div class="card-row">
-                                    <strong>Units:</strong>
-                                    <span>{{ lead.total_units }} ({{ lead.units_created }} created)</span>
-                                </div>
-                            </div>
-                            <div class="card-footer">
-                                <button class="details-btn" data-lead-id="{{ lead.id }}">
-                                    View Details
-                                </button>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Lead Details Modal -->
-        <div id="leadDetailsModal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Lead Details</h2>
-                    <button class="close-modal">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="details-grid">
-                        <div class="details-section">
-                            <h3>Permit Information</h3>
-                            <div class="details-group">
-                                <label>Permit Number:</label>
-                                <span class="permit-number"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Status:</label>
-                                <span class="permit-status"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Description:</label>
-                                <span class="permit-description"></span>
-                            </div>
-                        </div>
-
-                        <div class="details-section">
-                            <h3>Project Details</h3>
-                            <div class="details-group">
-                                <label>Project Type:</label>
-                                <span class="project-type"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Work Type:</label>
-                                <span class="work-type"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Sub Work Type:</label>
-                                <span class="sub-work-type"></span>
-                            </div>
-                        </div>
-
-                        <div class="details-section">
-                            <h3>Location & Value</h3>
-                            <div class="details-group">
-                                <label>Location:</label>
-                                <span class="location"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Legal Description:</label>
-                                <span class="legal-description"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Construction Value:</label>
-                                <span class="construction-value"></span>
-                            </div>
-                        </div>
-
-                        <div class="details-section">
-                            <h3>Units Information</h3>
-                            <div class="details-group">
-                                <label>Total Units:</label>
-                                <span class="total-units"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Units Created:</label>
-                                <span class="units-created"></span>
-                            </div>
-                        </div>
-
-                        <div class="details-section">
-                            <h3>Important Dates</h3>
-                            <div class="details-group">
-                                <label>Submission Date:</label>
-                                <span class="submission-date"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Issue Date:</label>
-                                <span class="issue-date"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Expiry Date:</label>
-                                <span class="expiry-date"></span>
-                            </div>
-                        </div>
-
-                        <div class="details-section">
-                            <h3>Contact Information</h3>
-                            <div class="details-group">
-                                <label>Owner:</label>
-                                <span class="owner"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Applicant:</label>
-                                <span class="applicant"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Contractor:</label>
-                                <span class="contractor"></span>
-                            </div>
-                            <div class="details-group">
-                                <label>Contractor Contact:</label>
-                                <span class="contractor-contact"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="contractor-sections" id="contractor-sections">
+            <!-- Will be populated by JavaScript -->
         </div>
     </main>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<!-- Any additional scripts specific to the dashboard can go here -->
+<!-- Modal for lead details -->
+<div id="leadModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <div id="leadDetails"></div>
+    </div>
+</div>
+
+<style>
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stat-card h3 {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-top: 0.5rem;
+    color: #2c3e50;
+}
+
+.contractor-section {
+    margin-bottom: 2rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.section-header {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.section-header h3 {
+    margin: 0;
+    color: #2c3e50;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.section-header .count {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.permit-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.permit-table th,
+.permit-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.permit-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+}
+
+.permit-table tr:hover {
+    background: #f8f9fa;
+}
+
+.status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.status-approved { background: #d4edda; color: #155724; }
+.status-pending { background: #fff3cd; color: #856404; }
+.status-in-review { background: #cce5ff; color: #004085; }
+.status-expired { background: #f8d7da; color: #721c24; }
+
+.value-cell {
+    font-family: monospace;
+    text-align: right;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Fetch data from the /leads endpoint
+    fetch('/leads')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Update contractor stats
+                updateContractorStats(data.summary);
+                
+                // Update contractor sections
+                updateContractorSections(data.categorized_permits);
+            } else {
+                console.error('Error fetching data:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+});
+
+function updateContractorStats(summary) {
+    const statsContainer = document.getElementById('contractor-stats');
+    statsContainer.innerHTML = '';
+    
+    // Add total permits card
+    const totalCard = createStatCard('Total Permits', summary.total_permits);
+    statsContainer.appendChild(totalCard);
+    
+    // Add cards for each contractor type
+    Object.entries(summary.contractor_distribution).forEach(([type, count]) => {
+        const value = summary.total_value_by_contractor[type];
+        const card = createStatCard(type, `${count} permits<br>${value}`);
+        statsContainer.appendChild(card);
+    });
+}
+
+function createStatCard(title, value) {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `
+        <h3>${title}</h3>
+        <div class="stat-value">${value}</div>
+    `;
+    return card;
+}
+
+function updateContractorSections(categorizedPermits) {
+    const sectionsContainer = document.getElementById('contractor-sections');
+    sectionsContainer.innerHTML = '';
+    
+    Object.entries(categorizedPermits).forEach(([contractorType, permits]) => {
+        const section = createContractorSection(contractorType, permits);
+        sectionsContainer.appendChild(section);
+    });
+}
+
+function createContractorSection(contractorType, permits) {
+    const section = document.createElement('div');
+    section.className = 'contractor-section';
+    
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.innerHTML = `
+        <h3>
+            ${contractorType}
+            <span class="count">${permits.length} permits</span>
+        </h3>
+    `;
+    
+    const table = document.createElement('table');
+    table.className = 'permit-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Permit Number</th>
+                <th>Project Type</th>
+                <th>Status</th>
+                <th>Work Type</th>
+                <th>Property Address</th>
+                <th>Value</th>
+                <th>Application Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${permits.map(permit => `
+                <tr>
+                    <td>${permit['Permit Number']}</td>
+                    <td>${permit['Permit Type']}</td>
+                    <td><span class="status-badge status-${permit['Status'].toLowerCase()}">${permit['Status']}</span></td>
+                    <td>${permit['Work Type']}</td>
+                    <td>${permit['Property Address']}</td>
+                    <td class="value-cell">${permit['Construction Value']}</td>
+                    <td>${permit['Application Date']}</td>
+                </tr>
+            `).join('')}
+        </tbody>
+    `;
+    
+    section.appendChild(header);
+    section.appendChild(table);
+    return section;
+}
+</script>
 {% endblock %} 
