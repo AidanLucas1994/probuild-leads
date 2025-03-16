@@ -9,6 +9,8 @@ import sys
 import logging
 from models import db, Lead
 from fetch_permits import fetch_permit_data, transform_permit_data
+import pandas as pd
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -523,18 +525,27 @@ def fetch_permits():
                     date_analysis[field] = {
                         'min_date': dates.min().isoformat() if isinstance(dates.min(), datetime) else str(dates.min()),
                         'max_date': dates.max().isoformat() if isinstance(dates.max(), datetime) else str(dates.max()),
-                        'unique_dates': len(dates.unique()),
-                        'null_count': raw_df[field].isnull().sum(),
-                        'last_12_months_count': len(dates[dates >= (datetime.now() - timedelta(days=365))])
+                        'unique_dates': int(len(dates.unique())),  # Convert numpy.int64 to int
+                        'null_count': int(raw_df[field].isnull().sum()),  # Convert numpy.int64 to int
+                        'last_12_months_count': int(len(dates[dates >= (datetime.now() - timedelta(days=365))]))  # Convert numpy.int64 to int
                     }
 
-        # Convert raw DataFrame to JSON, handling datetime objects
+        # Convert raw DataFrame to JSON, handling datetime objects and numpy types
         raw_data = []
         for _, row in raw_df.iterrows():
             permit_dict = {}
             for column, value in row.items():
                 if isinstance(value, datetime):
                     permit_dict[column] = value.isoformat()
+                elif pd.isna(value):  # Handle NaN/None values
+                    permit_dict[column] = None
+                elif hasattr(value, 'dtype'):  # Handle numpy types
+                    if np.issubdtype(value.dtype, np.integer):
+                        permit_dict[column] = int(value)
+                    elif np.issubdtype(value.dtype, np.floating):
+                        permit_dict[column] = float(value)
+                    else:
+                        permit_dict[column] = str(value)
                 else:
                     permit_dict[column] = value
             raw_data.append(permit_dict)
@@ -551,8 +562,8 @@ def fetch_permits():
         return jsonify({
             'status': 'success',
             'message': 'Raw permit data retrieved successfully',
-            'total_records': len(raw_data),
-            'columns': raw_df.columns.tolist(),
+            'total_records': int(len(raw_data)),  # Convert numpy.int64 to int
+            'columns': list(raw_df.columns),  # Convert Index to list
             'date_analysis': date_analysis,
             'data': raw_data
         })
