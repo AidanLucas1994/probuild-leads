@@ -28,14 +28,17 @@ def fetch_permit_data():
     Returns a pandas DataFrame if successful, None otherwise.
     """
     try:
-        # Convert dates to milliseconds since epoch (ArcGIS format)
+        # Convert dates to ArcGIS timestamp format (milliseconds since epoch)
         start_date = int(pd.Timestamp('2024-01-01').timestamp() * 1000)
         end_date = int(pd.Timestamp('2025-12-31').timestamp() * 1000)
         
         # Build the where clause for the query
-        where_clause = f"APPLICATION_DATE >= {start_date} AND APPLICATION_DATE <= {end_date}"
+        # Format: APPLICATION_DATE >= timestamp '2024-01-01 00:00:00' AND APPLICATION_DATE <= timestamp '2025-12-31 23:59:59'
+        where_clause = f"APPLICATION_DATE >= timestamp '2024-01-01 00:00:00' AND APPLICATION_DATE <= timestamp '2025-12-31 23:59:59'"
         
-        # API endpoint URL with date filter
+        logger.info("Using where clause: {}".format(where_clause))
+        
+        # API endpoint URL
         base_url = ("https://services1.arcgis.com/qAo1OsXi67t7XgmS/arcgis/rest/services/"
                    "Building_Permits/FeatureServer/0/query")
         
@@ -44,16 +47,16 @@ def fetch_permit_data():
             'where': where_clause,
             'outFields': '*',
             'outSR': '4326',
-            'f': 'json'
+            'f': 'json',
+            'returnGeometry': 'false'  # We don't need geometry data
         }
         
-        # Send GET request
-        logger.info("Fetching data from API with date filter...")
-        logger.info("Date range: {} to {}".format(
-            pd.Timestamp(start_date/1000, unit='s').strftime('%Y-%m-%d'),
-            pd.Timestamp(end_date/1000, unit='s').strftime('%Y-%m-%d')
-        ))
+        # Log the full URL and parameters for debugging
+        logger.info("Making API request with parameters:")
+        logger.info("URL: {}".format(base_url))
+        logger.info("Parameters: {}".format(params))
         
+        # Send GET request
         response = requests.get(base_url, params=params)
         
         # Check if request was successful
@@ -63,6 +66,11 @@ def fetch_permit_data():
         data = response.json()
         logger.info("API Response received. Status code: {}".format(response.status_code))
         
+        # Log the raw response for debugging
+        if 'error' in data:
+            logger.error("API returned error: {}".format(json.dumps(data['error'], indent=2)))
+            return None
+            
         # Extract features from the response
         features = data.get('features', [])
         logger.info("Found {} features in the response".format(len(features)))
@@ -83,19 +91,26 @@ def fetch_permit_data():
                     permit[field] = datetime.fromtimestamp(permit[field] / 1000)
             permits.append(permit)
         
-        logger.info("Successfully processed {} permits".format(len(permits)))
-        
         # Create DataFrame
         df = pd.DataFrame(permits)
-        logger.info("Created DataFrame with shape: {}".format(df.shape))
         
-        # Log column names for debugging
-        logger.info("DataFrame columns: {}".format(df.columns.tolist()))
+        # Log date range in the retrieved data
+        if not df.empty and 'APPLICATION_DATE' in df.columns:
+            logger.info("Retrieved data date range:")
+            logger.info("Earliest date: {}".format(df['APPLICATION_DATE'].min()))
+            logger.info("Latest date: {}".format(df['APPLICATION_DATE'].max()))
+            logger.info("Total permits: {}".format(len(df)))
+            
+            # Log year distribution
+            year_counts = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
+            logger.info("\nPermits by year:")
+            for year, count in year_counts.items():
+                logger.info("{}: {} permits".format(year, count))
         
         return df
         
     except Exception as e:
-        logger.error("Error: {}".format(str(e)))
+        logger.error("Error fetching permit data: {}".format(str(e)), exc_info=True)
         return None
 
 def transform_permit_data(df):
