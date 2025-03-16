@@ -18,6 +18,36 @@
             <p class="header-description">View and filter construction project leads</p>
         </div>
 
+        <!-- Filter Controls -->
+        <div class="filter-section">
+            <h3>Filter Leads</h3>
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label for="contractorType">Contractor Type</label>
+                    <select id="contractorType" class="filter-select">
+                        <option value="all">All Contractors</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="status">Status</label>
+                    <select id="status" class="filter-select">
+                        <option value="all">All Statuses</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="filter-group value-range">
+                    <label>Construction Value Range</label>
+                    <div class="range-inputs">
+                        <input type="number" id="minValue" placeholder="Min Value" class="value-input">
+                        <span>to</span>
+                        <input type="number" id="maxValue" placeholder="Max Value" class="value-input">
+                    </div>
+                </div>
+                <button id="resetFilters" class="reset-btn">Reset Filters</button>
+            </div>
+        </div>
+
         <div class="dashboard-header">
             <h2>Contractor Summary</h2>
             <div class="stats-grid" id="contractor-stats">
@@ -137,20 +167,102 @@
     padding: 2rem;
     color: #6c757d;
 }
+
+/* New Filter Styles */
+.filter-section {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.filter-section h3 {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 1.2rem;
+}
+
+.filter-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-group label {
+    font-size: 0.9rem;
+    color: #495057;
+    font-weight: 500;
+}
+
+.filter-select {
+    padding: 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    color: #495057;
+    background-color: white;
+}
+
+.value-range .range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.value-input {
+    width: 120px;
+    padding: 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.reset-btn {
+    padding: 0.5rem 1rem;
+    background-color: #e9ecef;
+    border: none;
+    border-radius: 4px;
+    color: #495057;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background-color 0.2s;
+}
+
+.reset-btn:hover {
+    background-color: #dee2e6;
+}
 </style>
 
 <script>
+let allPermits = [];
+let currentFilters = {
+    contractorType: 'all',
+    status: 'all',
+    minValue: null,
+    maxValue: null
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     // Fetch data from the /leads endpoint
     fetch('/leads')
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                // Update contractor stats
-                updateContractorStats(data.summary);
+                allPermits = data.categorized_permits;
                 
-                // Update contractor sections
-                updateContractorSections(data.categorized_permits);
+                // Initialize filters
+                initializeFilters(data);
+                
+                // Update display
+                updateDashboard();
             } else {
                 console.error('Error fetching data:', data.message);
             }
@@ -158,17 +270,137 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(error => {
             console.error('Error:', error);
         });
+
+    // Add event listeners for filters
+    document.getElementById('contractorType').addEventListener('change', handleFilterChange);
+    document.getElementById('status').addEventListener('change', handleFilterChange);
+    document.getElementById('minValue').addEventListener('input', handleFilterChange);
+    document.getElementById('maxValue').addEventListener('input', handleFilterChange);
+    document.getElementById('resetFilters').addEventListener('click', resetFilters);
 });
+
+function initializeFilters(data) {
+    // Populate contractor type dropdown
+    const contractorSelect = document.getElementById('contractorType');
+    Object.keys(data.categorized_permits).forEach(type => {
+        const option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        contractorSelect.appendChild(option);
+    });
+
+    // Populate status dropdown
+    const statusSelect = document.getElementById('status');
+    const statuses = new Set();
+    Object.values(data.categorized_permits).flat().forEach(permit => {
+        statuses.add(permit.Status);
+    });
+    Array.from(statuses).sort().forEach(status => {
+        const option = document.createElement('option');
+        option.value = status.toLowerCase();
+        option.textContent = status;
+        statusSelect.appendChild(option);
+    });
+
+    // Set initial value range
+    const values = Object.values(data.categorized_permits)
+        .flat()
+        .map(permit => parseFloat(permit['Construction Value'].replace(/[^0-9.-]+/g, '')));
+    
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    
+    document.getElementById('minValue').placeholder = `Min (${formatCurrency(minValue)})`;
+    document.getElementById('maxValue').placeholder = `Max (${formatCurrency(maxValue)})`;
+}
+
+function handleFilterChange() {
+    currentFilters = {
+        contractorType: document.getElementById('contractorType').value,
+        status: document.getElementById('status').value,
+        minValue: parseFloat(document.getElementById('minValue').value) || null,
+        maxValue: parseFloat(document.getElementById('maxValue').value) || null
+    };
+    
+    updateDashboard();
+}
+
+function resetFilters() {
+    document.getElementById('contractorType').value = 'all';
+    document.getElementById('status').value = 'all';
+    document.getElementById('minValue').value = '';
+    document.getElementById('maxValue').value = '';
+    
+    handleFilterChange();
+}
+
+function updateDashboard() {
+    const filteredPermits = filterPermits(allPermits);
+    const summary = calculateSummary(filteredPermits);
+    
+    updateContractorStats(summary);
+    updateContractorSections(filteredPermits);
+}
+
+function filterPermits(permits) {
+    const filtered = {};
+    
+    Object.entries(permits).forEach(([type, typePermits]) => {
+        if (currentFilters.contractorType === 'all' || currentFilters.contractorType === type) {
+            filtered[type] = typePermits.filter(permit => {
+                const permitValue = parseFloat(permit['Construction Value'].replace(/[^0-9.-]+/g, ''));
+                
+                const matchesStatus = currentFilters.status === 'all' || 
+                    permit.Status.toLowerCase() === currentFilters.status;
+                
+                const matchesValue = (!currentFilters.minValue || permitValue >= currentFilters.minValue) &&
+                    (!currentFilters.maxValue || permitValue <= currentFilters.maxValue);
+                
+                return matchesStatus && matchesValue;
+            });
+        }
+    });
+    
+    return filtered;
+}
+
+function calculateSummary(filteredPermits) {
+    const summary = {
+        total_permits: 0,
+        contractor_distribution: {},
+        total_value_by_contractor: {}
+    };
+    
+    Object.entries(filteredPermits).forEach(([type, permits]) => {
+        summary.total_permits += permits.length;
+        summary.contractor_distribution[type] = permits.length;
+        
+        const totalValue = permits.reduce((sum, permit) => {
+            return sum + parseFloat(permit['Construction Value'].replace(/[^0-9.-]+/g, ''));
+        }, 0);
+        
+        summary.total_value_by_contractor[type] = formatCurrency(totalValue);
+    });
+    
+    return summary;
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(value);
+}
 
 function updateContractorStats(summary) {
     const statsContainer = document.getElementById('contractor-stats');
     statsContainer.innerHTML = '';
     
-    // Add total permits card
     const totalCard = createStatCard('Total Permits', summary.total_permits);
     statsContainer.appendChild(totalCard);
     
-    // Add cards for each contractor type
     Object.entries(summary.contractor_distribution).forEach(([type, count]) => {
         const value = summary.total_value_by_contractor[type];
         const card = createStatCard(type, `${count} permits<br>${value}`);
