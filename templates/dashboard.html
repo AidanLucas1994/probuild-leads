@@ -345,6 +345,17 @@ function fetchLeadsData() {
     const page = Math.max(1, parseInt(currentFilters.page) || 1);
     const limit = Math.max(1, Math.min(100, parseInt(currentFilters.limit) || 50));
 
+    // Debug log current filter state
+    console.group('Filter Parameters');
+    console.log('Current Filters:', {
+        page,
+        limit,
+        contractorType: currentFilters.contractorType,
+        status: currentFilters.status,
+        minValue: currentFilters.minValue,
+        maxValue: currentFilters.maxValue
+    });
+
     // Construct URL with query parameters
     const queryParams = new URLSearchParams();
     queryParams.append('page', page.toString());
@@ -364,10 +375,20 @@ function fetchLeadsData() {
         queryParams.append('max_value', currentFilters.maxValue.toString());
     }
 
-    fetch(`/leads?${queryParams.toString()}`)
+    const requestUrl = `/leads?${queryParams.toString()}`;
+    console.log('Request URL:', requestUrl);
+    console.groupEnd();
+
+    fetch(requestUrl)
         .then(response => {
+            console.group('API Response');
+            console.log('Response Status:', response.status);
+            console.log('Response Headers:', Object.fromEntries(response.headers.entries()));
+            
             if (!response.ok) {
                 return response.json().then(err => {
+                    console.error('API Error:', err);
+                    console.groupEnd();
                     throw new Error(err.message || 'Failed to fetch leads data');
                 });
             }
@@ -375,6 +396,16 @@ function fetchLeadsData() {
         })
         .then(data => {
             if (data.status === 'success') {
+                console.log('API Success Data:', {
+                    totalPermits: data.summary.total_permits,
+                    contractorTypes: Object.keys(data.categorized_permits),
+                    pagination: data.pagination,
+                    permitCounts: Object.fromEntries(
+                        Object.entries(data.categorized_permits)
+                            .map(([type, permits]) => [type, permits.length])
+                    )
+                });
+                
                 allPermits = data.categorized_permits;
                 
                 // Update pagination data
@@ -386,6 +417,8 @@ function fetchLeadsData() {
                     has_prev: data.pagination.has_prev
                 };
                 
+                console.log('Updated Pagination State:', paginationData);
+                
                 // Initialize filters on first load
                 if (page === 1) {
                     initializeFilters(data);
@@ -395,18 +428,29 @@ function fetchLeadsData() {
                 updateDashboard(data);
                 updatePaginationControls();
             } else {
-                console.error('Error fetching data:', data.message);
+                console.error('API Error Response:', data);
                 showError(data.message);
             }
+            console.groupEnd();
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Fetch Error:', error);
             showError(error.message || 'Failed to fetch leads data');
+            console.groupEnd();
         });
 }
 
 function updatePaginationControls() {
     const { page, total_pages, total_records, has_next, has_prev } = paginationData;
+    
+    console.group('Pagination Update');
+    console.log('Current Pagination State:', {
+        currentPage: page,
+        totalPages: total_pages,
+        totalRecords: total_records,
+        hasNext: has_next,
+        hasPrev: has_prev
+    });
     
     // Update pagination summary
     document.getElementById('pagination-summary').textContent = 
@@ -418,11 +462,22 @@ function updatePaginationControls() {
     // Update button states
     document.getElementById('prevPage').disabled = !has_prev;
     document.getElementById('nextPage').disabled = !has_next;
+    
+    console.log('Pagination controls updated');
+    console.groupEnd();
 }
 
 function changePage(delta) {
-    // Calculate new page number based on current pagination data
-    const newPage = Math.max(1, paginationData.page + delta);
+    console.group('Page Change');
+    const currentPage = paginationData.page;
+    const newPage = Math.max(1, currentPage + delta);
+    
+    console.log('Page Change:', {
+        currentPage,
+        delta,
+        newPage,
+        totalPages: paginationData.total_pages
+    });
     
     // Update current filters with new page number
     currentFilters = {
@@ -430,13 +485,16 @@ function changePage(delta) {
         page: newPage
     };
     
+    console.log('Updated filters:', currentFilters);
+    console.groupEnd();
+    
     // Fetch data with updated page
     fetchLeadsData();
 }
 
 function handleFilterChange() {
-    // Reset to page 1 when filters change
-    currentFilters = {
+    console.group('Filter Change Event');
+    const newFilters = {
         ...currentFilters,
         page: 1,
         contractorType: document.getElementById('contractorType').value,
@@ -445,10 +503,18 @@ function handleFilterChange() {
         maxValue: parseFloat(document.getElementById('maxValue').value) || null
     };
     
+    console.log('Previous Filters:', currentFilters);
+    console.log('New Filters:', newFilters);
+    console.groupEnd();
+    
+    currentFilters = newFilters;
     fetchLeadsData();
 }
 
 function resetFilters() {
+    console.group('Reset Filters');
+    console.log('Previous Filters:', currentFilters);
+    
     document.getElementById('contractorType').value = 'all';
     document.getElementById('status').value = 'all';
     document.getElementById('minValue').value = '';
@@ -463,12 +529,25 @@ function resetFilters() {
         maxValue: null
     };
     
+    console.log('Reset to:', currentFilters);
+    console.groupEnd();
+    
     fetchLeadsData();
 }
 
 function updateDashboard(data) {
+    console.group('Dashboard Update');
+    console.log('Updating with data:', {
+        totalPermits: data.summary.total_permits,
+        contractorDistribution: data.summary.contractor_distribution,
+        totalValueByContractor: data.summary.total_value_by_contractor
+    });
+    
     updateContractorStats(data.summary);
     updateContractorSections(data.categorized_permits);
+    
+    console.log('Dashboard update complete');
+    console.groupEnd();
 }
 
 function showError(message) {
