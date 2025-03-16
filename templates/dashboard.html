@@ -287,6 +287,125 @@
 .reset-btn:hover {
     background-color: #dee2e6;
 }
+
+/* Add these new styles */
+.action-cell {
+    width: 9%;
+    text-align: center;
+}
+
+.details-btn {
+    padding: 0.25rem 0.75rem;
+    background-color: #e9ecef;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    color: #495057;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.details-btn:hover {
+    background-color: #dee2e6;
+    border-color: #adb5bd;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    position: relative;
+    background-color: #fff;
+    margin: 2rem auto;
+    padding: 0;
+    width: 90%;
+    max-width: 800px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 1;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #2c3e50;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.close {
+    position: absolute;
+    right: 1.5rem;
+    top: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #6c757d;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+}
+
+.close:hover {
+    color: #343a40;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.detail-section {
+    background: #f8f9fa;
+    padding: 1.25rem;
+    border-radius: 6px;
+}
+
+.detail-section h3 {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 1.1rem;
+}
+
+.detail-row {
+    display: flex;
+    margin-bottom: 0.75rem;
+}
+
+.detail-label {
+    flex: 0 0 40%;
+    color: #495057;
+    font-weight: 500;
+}
+
+.detail-value {
+    flex: 0 0 60%;
+    color: #212529;
+}
 </style>
 
 <script>
@@ -504,6 +623,7 @@ function createContractorSection(contractorType, permits) {
                 <th class="col-location">Location</th>
                 <th class="col-value">Value</th>
                 <th class="col-date">Application Date</th>
+                <th class="action-cell">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -530,6 +650,11 @@ function createContractorSection(contractorType, permits) {
                     <td class="col-date">
                         <span class="truncate">${permit['Application Date']}</span>
                     </td>
+                    <td class="action-cell">
+                        <button class="details-btn" onclick="showPermitDetails(${JSON.stringify(permit).replace(/"/g, '&quot;')})">
+                            More Details
+                        </button>
+                    </td>
                 </tr>
             `).join('')}
         </tbody>
@@ -540,5 +665,110 @@ function createContractorSection(contractorType, permits) {
     section.appendChild(tableContainer);
     return section;
 }
+
+function showPermitDetails(permit) {
+    const modal = document.getElementById('leadModal');
+    const modalContent = modal.querySelector('.modal-content');
+    
+    modalContent.innerHTML = `
+        <div class="modal-header">
+            <h2>Permit Details - ${permit['Permit Number']}</h2>
+            <button class="close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="detail-grid">
+                <div class="detail-section">
+                    <h3>Basic Information</h3>
+                    <div class="detail-row">
+                        <span class="detail-label">Permit Number:</span>
+                        <span class="detail-value">${permit['Permit Number']}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Project Type:</span>
+                        <span class="detail-value">${permit['Permit Type']}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Status:</span>
+                        <span class="detail-value">
+                            <span class="status-badge status-${permit['Status'].toLowerCase()}">${permit['Status']}</span>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Work Type:</span>
+                        <span class="detail-value">${permit['Work Type']}</span>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>Location & Value</h3>
+                    <div class="detail-row">
+                        <span class="detail-label">Address:</span>
+                        <span class="detail-value">${permit['Property Address']}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Construction Value:</span>
+                        <span class="detail-value">${permit['Construction Value']}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Application Date:</span>
+                        <span class="detail-value">${permit['Application Date']}</span>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>Contact Information</h3>
+                    <div class="detail-row">
+                        <span class="detail-label">Contractor:</span>
+                        <span class="detail-value">${permit['Contractor'] || 'Not specified'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Contact:</span>
+                        <span class="detail-value">${permit['Contractor Contact'] || 'Not specified'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Owner:</span>
+                        <span class="detail-value">${permit['Owner'] || 'Not specified'}</span>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>Additional Details</h3>
+                    <div class="detail-row">
+                        <span class="detail-label">Description:</span>
+                        <span class="detail-value">${permit['Description'] || 'No description available'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Legal Description:</span>
+                        <span class="detail-value">${permit['Legal Description'] || 'Not available'}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Show modal
+    modal.style.display = 'block';
+
+    // Add close button event listener
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+
+    // Close modal when clicking outside
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    };
+}
+
+// Add event listener for ESC key to close modal
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        const modal = document.getElementById('leadModal');
+        modal.style.display = 'none';
+    }
+});
 </script>
 {% endblock %} 
