@@ -554,18 +554,28 @@ def get_leads_by_contractor():
     Returns a JSON response with paginated permits grouped by contractor type and summary statistics.
     """
     try:
+        logger.info("=== Starting /leads request ===")
+        
+        # Log raw query parameters
+        logger.info("Raw query parameters: %s", dict(request.args))
+        
         # Get and validate pagination parameters
         try:
             page = int(request.args.get('page', 1))
             limit = int(request.args.get('limit', 50))
             
+            logger.info("Parsed pagination parameters: page=%d, limit=%d", page, limit)
+            
             # Validate parameters
             if page < 1:
+                logger.error("Invalid page number: %d (must be >= 1)", page)
                 raise ValueError("Page number must be greater than 0")
             if limit < 1 or limit > 100:
+                logger.error("Invalid limit: %d (must be between 1 and 100)", limit)
                 raise ValueError("Limit must be between 1 and 100")
                 
         except (TypeError, ValueError) as e:
+            logger.error("Pagination parameter validation failed: %s", str(e))
             return jsonify({
                 'status': 'error',
                 'message': 'Invalid pagination parameters',
@@ -573,11 +583,20 @@ def get_leads_by_contractor():
                 'error_details': str(e)
             }), 400
         
-        logger.info(f"Fetching permit data for page {page} with limit {limit}...")
+        # Log other filter parameters
+        filter_params = {
+            'contractor_type': request.args.get('contractor_type'),
+            'status': request.args.get('status'),
+            'min_value': request.args.get('min_value'),
+            'max_value': request.args.get('max_value')
+        }
+        logger.info("Filter parameters: %s", filter_params)
         
-        # Fetch permit data using the existing endpoint functionality
+        # Fetch permit data
+        logger.info("Fetching permit data from API...")
         raw_df = fetch_permit_data()
         if raw_df is None:
+            logger.error("Failed to fetch permit data from API")
             return jsonify({
                 'status': 'error',
                 'message': 'Failed to fetch permit data',
@@ -585,19 +604,51 @@ def get_leads_by_contractor():
             }), 500
 
         # Transform the data
+        logger.info("Transforming permit data...")
         result = transform_permit_data(raw_df)
         if result['status'] != 'success':
+            logger.error("Data transformation failed: %s", result.get('message', 'Unknown error'))
             return jsonify(result), 400
 
         # Extract permits from the result
         all_permits = result['permits']
+        logger.info("Total permits before filtering: %d", len(all_permits))
         
-        # Calculate total pages before any filtering
-        total_permits = len(all_permits)
+        # Apply filters if provided
+        filtered_permits = all_permits
+        if filter_params['contractor_type'] and filter_params['contractor_type'] != 'all':
+            filtered_permits = [p for p in filtered_permits if p['Contractor Type'] == filter_params['contractor_type']]
+            logger.info("After contractor type filter: %d permits", len(filtered_permits))
+            
+        if filter_params['status'] and filter_params['status'] != 'all':
+            filtered_permits = [p for p in filtered_permits if p['Status'].lower() == filter_params['status'].lower()]
+            logger.info("After status filter: %d permits", len(filtered_permits))
+            
+        if filter_params['min_value']:
+            try:
+                min_val = float(filter_params['min_value'])
+                filtered_permits = [p for p in filtered_permits if float(p['Construction Value'].replace('$', '').replace(',', '')) >= min_val]
+                logger.info("After min value filter: %d permits", len(filtered_permits))
+            except ValueError as e:
+                logger.warning("Invalid min_value parameter: %s", str(e))
+                
+        if filter_params['max_value']:
+            try:
+                max_val = float(filter_params['max_value'])
+                filtered_permits = [p for p in filtered_permits if float(p['Construction Value'].replace('$', '').replace(',', '')) <= max_val]
+                logger.info("After max value filter: %d permits", len(filtered_permits))
+            except ValueError as e:
+                logger.warning("Invalid max_value parameter: %s", str(e))
+        
+        # Calculate total pages
+        total_permits = len(filtered_permits)
         total_pages = max(1, (total_permits + limit - 1) // limit)
+        
+        logger.info("Pagination calculation: total_permits=%d, total_pages=%d", total_permits, total_pages)
         
         # Validate page number against total pages
         if page > total_pages:
+            logger.error("Page number %d exceeds total pages %d", page, total_pages)
             return jsonify({
                 'status': 'error',
                 'message': f'Page {page} exceeds total pages ({total_pages})',
@@ -613,6 +664,7 @@ def get_leads_by_contractor():
         # Calculate pagination indices
         start_idx = (page - 1) * limit
         end_idx = min(start_idx + limit, total_permits)
+        logger.info("Pagination indices: start=%d, end=%d", start_idx, end_idx)
         
         # Group permits by contractor type
         categorized_permits = {}
@@ -620,7 +672,7 @@ def get_leads_by_contractor():
         contractor_values = {}
         
         # First pass: count totals for each contractor type
-        for permit in all_permits:
+        for permit in filtered_permits:
             contractor_type = permit['Contractor Type']
             if contractor_type not in categorized_permits:
                 categorized_permits[contractor_type] = []
@@ -631,11 +683,13 @@ def get_leads_by_contractor():
             value = float(permit['Construction Value'].replace('$', '').replace(',', ''))
             contractor_values[contractor_type] += value
         
+        logger.info("Contractor distribution: %s", contractor_counts)
+        
         # Second pass: paginate permits
         paginated_permits = {ctype: [] for ctype in categorized_permits.keys()}
         current_count = 0
         
-        for permit in all_permits:
+        for permit in filtered_permits:
             if current_count >= end_idx:
                 break
                 
@@ -680,14 +734,15 @@ def get_leads_by_contractor():
             }
         }
 
-        logger.info(f"Successfully categorized and paginated permits. "
-                   f"Page {page}/{total_pages}, showing permits {start_idx + 1}-{end_idx} "
-                   f"of {total_permits} total permits")
+        logger.info("Response summary: total_permits=%d, page=%d/%d, permits_in_response=%d",
+                   total_permits, page, total_pages,
+                   sum(len(permits) for permits in paginated_permits.values()))
+        logger.info("=== Completed /leads request ===")
         
         return jsonify(response)
 
     except Exception as e:
-        logger.error(f"Error in /leads route: {str(e)}", exc_info=True)
+        logger.error("Unexpected error in /leads route: %s", str(e), exc_info=True)
         return jsonify({
             'status': 'error',
             'message': 'An error occurred while processing the leads',
