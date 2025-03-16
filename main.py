@@ -8,7 +8,7 @@ import os
 import sys
 import logging
 from models import db, Lead
-from fetch_permits import fetch_permit_data
+from fetch_permits import fetch_permit_data, transform_permit_data
 
 # Configure logging
 logging.basicConfig(
