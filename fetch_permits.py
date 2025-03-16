@@ -193,34 +193,29 @@ def transform_permit_data(df):
             
         # Enhanced date filtering section
         logger.info("\n=== Step 3: Date Filtering ===")
-        one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
-        logger.info("\nDate Filtering Details:")
-        logger.info("Current timestamp: {}".format(pd.Timestamp.now()))
-        logger.info("One year ago threshold: {}".format(one_year_ago))
-        logger.info("Any permit with application date before {} will be excluded".format(
-            one_year_ago.strftime('%Y-%m-%d')))
         
-        # Sample of dates around the threshold
-        logger.info("\nSample of dates around threshold:")
-        sample_dates = df.sort_values('APPLICATION_DATE').iloc[-10:]['APPLICATION_DATE']
-        for date in sample_dates:
-            status = "INCLUDED" if date >= one_year_ago else "EXCLUDED"
-            logger.info("{}: {} (Threshold: {})".format(
-                date.strftime('%Y-%m-%d'),
-                status,
-                "After" if date >= one_year_ago else "Before"
-            ))
+        # Instead of using absolute dates, let's use relative dates from the data
+        latest_date = df['APPLICATION_DATE'].max()
+        relative_cutoff = latest_date - pd.DateOffset(years=1)
+        
+        logger.info("\nDate Filtering Details:")
+        logger.info("Latest permit date: {}".format(latest_date.strftime('%Y-%m-%d')))
+        logger.info("Using relative cutoff date: {}".format(relative_cutoff.strftime('%Y-%m-%d')))
+        logger.info("Will include permits from {} to {}".format(
+            relative_cutoff.strftime('%Y-%m-%d'),
+            latest_date.strftime('%Y-%m-%d')
+        ))
 
         # Count permits before filtering
         total_before = len(df)
         
         # Apply date filter with detailed logging
-        recent_permits = df[df['APPLICATION_DATE'] >= one_year_ago]
+        recent_permits = df[df['APPLICATION_DATE'] >= relative_cutoff]
         total_after = len(recent_permits)
         
         logger.info("\nFiltering Results:")
         logger.info("Total permits before filtering: {}".format(total_before))
-        logger.info("Permits within last 12 months: {}".format(total_after))
+        logger.info("Permits within last 12 months of data: {}".format(total_after))
         logger.info("Permits excluded: {}".format(total_before - total_after))
         
         if total_after == 0:
@@ -238,19 +233,20 @@ def transform_permit_data(df):
         df = recent_permits
 
         if df.empty:
-            logger.warning("No permits found within the last 12 months")
+            logger.warning("No permits found within the relative date range")
             return {
                 'status': 'warning',
-                'message': 'No recent permits found',
-                'details': 'No permits found within the last 12 months',
+                'message': 'No permits found in relative date range',
+                'details': 'No permits found within 12 months of the latest permit ({})'.format(
+                    latest_date.strftime('%Y-%m-%d')),
                 'metadata': {
                     'total_records_processed': original_length,
                     'invalid_dates_removed': records_removed,
                     'old_permits_filtered': total_before - total_after,
                     'date_range': {
-                        'earliest': min_date.strftime('%Y-%m-%d') if min_date is not None else None,
-                        'latest': max_date.strftime('%Y-%m-%d') if max_date is not None else None,
-                        'threshold': one_year_ago.strftime('%Y-%m-%d')
+                        'earliest': min_date.strftime('%Y-%m-%d'),
+                        'latest': max_date.strftime('%Y-%m-%d'),
+                        'relative_cutoff': relative_cutoff.strftime('%Y-%m-%d')
                     }
                 }
             }
@@ -352,7 +348,7 @@ def transform_permit_data(df):
             'metadata': {
                 'timestamp': datetime.now().isoformat(),
                 'filters_applied': {
-                    'date_range': f"Last 12 months (from {one_year_ago.strftime('%Y-%m-%d')})",
+                    'date_range': f"Last 12 months (from {relative_cutoff.strftime('%Y-%m-%d')})",
                     'fields_selected': list(df_final.columns)
                 }
             }
