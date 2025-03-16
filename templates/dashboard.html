@@ -58,6 +58,18 @@
         <div class="contractor-sections" id="contractor-sections">
             <!-- Will be populated by JavaScript -->
         </div>
+
+        <!-- Add pagination controls -->
+        <div class="pagination-controls">
+            <div class="pagination-info">
+                <span id="pagination-summary"></span>
+            </div>
+            <div class="pagination-buttons">
+                <button id="prevPage" class="pagination-btn" disabled>Previous</button>
+                <span id="currentPage"></span>
+                <button id="nextPage" class="pagination-btn" disabled>Next</button>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -239,6 +251,55 @@
 .reset-btn:hover {
     background-color: #dee2e6;
 }
+
+/* Add pagination styles */
+.pagination-controls {
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-top: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pagination-info {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.pagination-buttons {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.pagination-btn {
+    padding: 0.5rem 1rem;
+    background-color: #007bff;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background-color 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+.pagination-btn:disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+    color: #6c757d;
+}
+
+#currentPage {
+    font-weight: 500;
+    color: #495057;
+}
 </style>
 
 <script>
@@ -247,29 +308,21 @@ let currentFilters = {
     contractorType: 'all',
     status: 'all',
     minValue: null,
-    maxValue: null
+    maxValue: null,
+    page: 1,
+    limit: 50
+};
+
+let paginationData = {
+    currentPage: 1,
+    totalPages: 1,
+    hasNext: false,
+    hasPrev: false
 };
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Fetch data from the /leads endpoint
-    fetch('/leads')
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                allPermits = data.categorized_permits;
-                
-                // Initialize filters
-                initializeFilters(data);
-                
-                // Update display
-                updateDashboard();
-            } else {
-                console.error('Error fetching data:', data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
+    // Initial data fetch
+    fetchLeadsData();
 
     // Add event listeners for filters
     document.getElementById('contractorType').addEventListener('change', handleFilterChange);
@@ -277,7 +330,121 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('minValue').addEventListener('input', handleFilterChange);
     document.getElementById('maxValue').addEventListener('input', handleFilterChange);
     document.getElementById('resetFilters').addEventListener('click', resetFilters);
+
+    // Add pagination event listeners
+    document.getElementById('prevPage').addEventListener('click', () => changePage(-1));
+    document.getElementById('nextPage').addEventListener('click', () => changePage(1));
 });
+
+function fetchLeadsData() {
+    // Show loading state
+    document.getElementById('contractor-sections').innerHTML = '<div class="loading">Loading leads...</div>';
+
+    // Construct URL with query parameters
+    const queryParams = new URLSearchParams({
+        page: currentFilters.page,
+        limit: currentFilters.limit
+    });
+
+    // Add filter parameters if they exist
+    if (currentFilters.contractorType !== 'all') queryParams.append('contractor_type', currentFilters.contractorType);
+    if (currentFilters.status !== 'all') queryParams.append('status', currentFilters.status);
+    if (currentFilters.minValue) queryParams.append('min_value', currentFilters.minValue);
+    if (currentFilters.maxValue) queryParams.append('max_value', currentFilters.maxValue);
+
+    fetch(`/leads?${queryParams.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                allPermits = data.categorized_permits;
+                
+                // Update pagination data
+                paginationData = data.pagination;
+                
+                // Initialize filters on first load
+                if (currentFilters.page === 1) {
+                    initializeFilters(data);
+                }
+                
+                // Update display
+                updateDashboard(data);
+                updatePaginationControls();
+            } else {
+                console.error('Error fetching data:', data.message);
+                showError(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Failed to fetch leads data');
+        });
+}
+
+function updatePaginationControls() {
+    const { page, total_pages, total_records, has_next, has_prev } = paginationData;
+    
+    // Update pagination summary
+    document.getElementById('pagination-summary').textContent = 
+        `Showing page ${page} of ${total_pages} (${total_records} total records)`;
+    
+    // Update current page display
+    document.getElementById('currentPage').textContent = `Page ${page}`;
+    
+    // Update button states
+    document.getElementById('prevPage').disabled = !has_prev;
+    document.getElementById('nextPage').disabled = !has_next;
+}
+
+function changePage(delta) {
+    currentFilters.page = paginationData.currentPage + delta;
+    fetchLeadsData();
+}
+
+function handleFilterChange() {
+    currentFilters = {
+        ...currentFilters,
+        page: 1, // Reset to first page when filters change
+        contractorType: document.getElementById('contractorType').value,
+        status: document.getElementById('status').value,
+        minValue: parseFloat(document.getElementById('minValue').value) || null,
+        maxValue: parseFloat(document.getElementById('maxValue').value) || null
+    };
+    
+    fetchLeadsData();
+}
+
+function resetFilters() {
+    document.getElementById('contractorType').value = 'all';
+    document.getElementById('status').value = 'all';
+    document.getElementById('minValue').value = '';
+    document.getElementById('maxValue').value = '';
+    
+    currentFilters = {
+        ...currentFilters,
+        page: 1,
+        contractorType: 'all',
+        status: 'all',
+        minValue: null,
+        maxValue: null
+    };
+    
+    fetchLeadsData();
+}
+
+function updateDashboard(data) {
+    updateContractorStats(data.summary);
+    updateContractorSections(data.categorized_permits);
+}
+
+function showError(message) {
+    const sectionsContainer = document.getElementById('contractor-sections');
+    sectionsContainer.innerHTML = `
+        <div class="error-message">
+            <p>${message}</p>
+            <button onclick="fetchLeadsData()">Try Again</button>
+        </div>
+    `;
+}
 
 function initializeFilters(data) {
     // Populate contractor type dropdown
@@ -312,56 +479,6 @@ function initializeFilters(data) {
     
     document.getElementById('minValue').placeholder = `Min (${formatCurrency(minValue)})`;
     document.getElementById('maxValue').placeholder = `Max (${formatCurrency(maxValue)})`;
-}
-
-function handleFilterChange() {
-    currentFilters = {
-        contractorType: document.getElementById('contractorType').value,
-        status: document.getElementById('status').value,
-        minValue: parseFloat(document.getElementById('minValue').value) || null,
-        maxValue: parseFloat(document.getElementById('maxValue').value) || null
-    };
-    
-    updateDashboard();
-}
-
-function resetFilters() {
-    document.getElementById('contractorType').value = 'all';
-    document.getElementById('status').value = 'all';
-    document.getElementById('minValue').value = '';
-    document.getElementById('maxValue').value = '';
-    
-    handleFilterChange();
-}
-
-function updateDashboard() {
-    const filteredPermits = filterPermits(allPermits);
-    const summary = calculateSummary(filteredPermits);
-    
-    updateContractorStats(summary);
-    updateContractorSections(filteredPermits);
-}
-
-function filterPermits(permits) {
-    const filtered = {};
-    
-    Object.entries(permits).forEach(([type, typePermits]) => {
-        if (currentFilters.contractorType === 'all' || currentFilters.contractorType === type) {
-            filtered[type] = typePermits.filter(permit => {
-                const permitValue = parseFloat(permit['Construction Value'].replace(/[^0-9.-]+/g, ''));
-                
-                const matchesStatus = currentFilters.status === 'all' || 
-                    permit.Status.toLowerCase() === currentFilters.status;
-                
-                const matchesValue = (!currentFilters.minValue || permitValue >= currentFilters.minValue) &&
-                    (!currentFilters.maxValue || permitValue <= currentFilters.maxValue);
-                
-                return matchesStatus && matchesValue;
-            });
-        }
-    });
-    
-    return filtered;
 }
 
 function calculateSummary(filteredPermits) {

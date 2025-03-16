@@ -259,17 +259,42 @@ def transform_permit_data(df):
         
         # Filter for 2024-2025 permits
         start_date = pd.Timestamp('2024-01-01')
-        end_date = pd.Timestamp('2025-12-31')
+        end_date = pd.Timestamp('2025-12-31 23:59:59')  # Include full last day
         
         logger.info("\nDate Filtering Details:")
         logger.info("Filtering for permits between {} and {}".format(
-            start_date.strftime('%Y-%m-%d'),
-            end_date.strftime('%Y-%m-%d')
+            start_date.strftime('%Y-%m-%d %H:%M:%S'),
+            end_date.strftime('%Y-%m-%d %H:%M:%S')
         ))
 
         # Count permits before filtering
         total_before = len(df)
         
+        # Detailed year analysis before filtering
+        year_analysis = df['APPLICATION_DATE'].dt.year.value_counts().sort_index()
+        logger.info("\nPermit Distribution by Year (Before Filtering):")
+        for year, count in year_analysis.items():
+            logger.info(f"{year}: {count} permits")
+            # If it's 2024, 2025, or future years, show monthly breakdown
+            if year >= 2024:
+                monthly = df[df['APPLICATION_DATE'].dt.year == year]['APPLICATION_DATE'].dt.month.value_counts().sort_index()
+                for month, month_count in monthly.items():
+                    logger.info(f"    {year}-{month:02d}: {month_count} permits")
+                    # Show sample permits for this month
+                    sample_permits = df[
+                        (df['APPLICATION_DATE'].dt.year == year) & 
+                        (df['APPLICATION_DATE'].dt.month == month)
+                    ].head(3)
+                    for _, permit in sample_permits.iterrows():
+                        logger.info(f"        Permit {permit.get('PERMITNO', 'Unknown')}: {permit['APPLICATION_DATE'].strftime('%Y-%m-%d %H:%M:%S')} - {permit.get('PERMIT_TYPE', 'Unknown Type')} - ${permit.get('CONSTRUCTION_VALUE', 'N/A')}")
+
+        # Check for future dates beyond 2025
+        future_dates = df[df['APPLICATION_DATE'] > end_date]
+        if not future_dates.empty:
+            logger.warning(f"\nFound {len(future_dates)} permits with dates beyond 2025:")
+            for _, permit in future_dates.iterrows():
+                logger.warning(f"Future permit: {permit.get('PERMITNO', 'Unknown')} - {permit['APPLICATION_DATE'].strftime('%Y-%m-%d %H:%M:%S')} - {permit.get('PERMIT_TYPE', 'Unknown Type')}")
+
         # Apply date filter with detailed logging
         recent_permits = df[
             (df['APPLICATION_DATE'] >= start_date) & 
@@ -277,21 +302,46 @@ def transform_permit_data(df):
         ]
         total_after = len(recent_permits)
         
-        logger.info("\nFiltering Results:")
+        # Verify 2025 permits specifically
+        permits_2025 = recent_permits[recent_permits['APPLICATION_DATE'].dt.year == 2025]
+        logger.info(f"\n2025 Permits Verification:")
+        logger.info(f"Total 2025 permits found: {len(permits_2025)}")
+        if not permits_2025.empty:
+            logger.info("Sample of 2025 permits:")
+            for _, permit in permits_2025.head(5).iterrows():
+                logger.info(f"2025 Permit: {permit.get('PERMITNO', 'Unknown')} - "
+                          f"{permit['APPLICATION_DATE'].strftime('%Y-%m-%d %H:%M:%S')} - "
+                          f"{permit.get('PERMIT_TYPE', 'Unknown Type')} - "
+                          f"${permit.get('CONSTRUCTION_VALUE', 'N/A')}")
+        
+        # Detailed year analysis after filtering
+        if not recent_permits.empty:
+            filtered_year_analysis = recent_permits['APPLICATION_DATE'].dt.year.value_counts().sort_index()
+            logger.info("\nPermit Distribution by Year (After Filtering):")
+            for year, count in filtered_year_analysis.items():
+                logger.info(f"{year}: {count} permits")
+                # Show monthly breakdown for each year
+                monthly = recent_permits[recent_permits['APPLICATION_DATE'].dt.year == year]['APPLICATION_DATE'].dt.month.value_counts().sort_index()
+                for month, month_count in monthly.items():
+                    logger.info(f"    {year}-{month:02d}: {month_count} permits")
+
+        logger.info("\nFiltering Results Summary:")
         logger.info("Total permits before filtering: {}".format(total_before))
         logger.info("Permits in 2024-2025: {}".format(total_after))
         logger.info("Permits excluded: {}".format(total_before - total_after))
+        logger.info("2024 permits: {}".format(len(recent_permits[recent_permits['APPLICATION_DATE'].dt.year == 2024])))
+        logger.info("2025 permits: {}".format(len(recent_permits[recent_permits['APPLICATION_DATE'].dt.year == 2025])))
         
         if total_after == 0:
             # If no permits are within range, log the most recent ones
             logger.info("\nMost recent permits (all excluded):")
             most_recent = df.nlargest(5, 'APPLICATION_DATE')
             for _, permit in most_recent.iterrows():
-                logger.info("Permit {}: {} - {} - {} - ${}".format(
+                logger.info("Permit {}: {} - {} - ${:,.2f}".format(
                     permit.get('PERMITNO', 'Unknown'),
-                    permit['APPLICATION_DATE'].strftime('%Y-%m-%d'),
+                    permit['APPLICATION_DATE'].strftime('%Y-%m-%d %H:%M:%S'),
                     permit.get('PERMIT_TYPE', 'Unknown Type'),
-                    permit.get('CONSTRUCTION_VALUE', 'N/A')
+                    float(permit.get('CONSTRUCTION_VALUE', 0))
                 ))
 
         # Update the df with filtered data
