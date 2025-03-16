@@ -8,6 +8,7 @@ import os
 import sys
 import logging
 from models import db, Lead
+from fetch_permits import fetch_permit_data
 
 # Configure logging
 logging.basicConfig(
@@ -492,6 +493,60 @@ def regenerate_data():
         db.session.rollback()
     
     return redirect(url_for('dashboard'))
+
+@app.route('/fetch-permit-data')
+def fetch_permits():
+    """
+    Fetch live permit data from the ArcGIS API and return as JSON.
+    Returns a JSON object containing either the permit data or an error message.
+    """
+    try:
+        # Fetch permit data using the existing function
+        df = fetch_permit_data()
+        
+        if df is not None:
+            # Calculate summary statistics
+            summary = {
+                'total_permits': len(df),
+                'time_range': {
+                    'start': df['APPLICATION_DATE'].min().isoformat(),
+                    'end': df['APPLICATION_DATE'].max().isoformat()
+                },
+                'total_value': float(df['CONSTRUCTION_VALUE'].sum()),
+                'average_value': float(df['CONSTRUCTION_VALUE'].mean()),
+                'permit_type_distribution': df['PERMIT_TYPE'].value_counts().to_dict()
+            }
+            
+            # Convert DataFrame to dictionary, handling datetime objects
+            permits = []
+            for _, row in df.iterrows():
+                permit_dict = {}
+                for column in df.columns:
+                    value = row[column]
+                    if isinstance(value, datetime):
+                        permit_dict[column] = value.isoformat()
+                    else:
+                        permit_dict[column] = value
+                permits.append(permit_dict)
+            
+            # Return both summary statistics and permit data
+            return jsonify({
+                'status': 'success',
+                'summary': summary,
+                'permits': permits
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'No permit data found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error in /fetch-permit-data: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error fetching permit data: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # Log startup information
