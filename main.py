@@ -512,6 +512,22 @@ def fetch_permits():
                 'error_type': 'api_error'
             }), 500
 
+        # Analyze dates in the raw data
+        date_analysis = {}
+        date_fields = ['APPLICATION_DATE', 'ISSUE_DATE', 'FINAL_DATE', 'EXPIRY_DATE', 'EXTRACTION_DATE']
+        
+        for field in date_fields:
+            if field in raw_df.columns:
+                dates = raw_df[field].dropna()
+                if not dates.empty:
+                    date_analysis[field] = {
+                        'min_date': dates.min().isoformat() if isinstance(dates.min(), datetime) else str(dates.min()),
+                        'max_date': dates.max().isoformat() if isinstance(dates.max(), datetime) else str(dates.max()),
+                        'unique_dates': len(dates.unique()),
+                        'null_count': raw_df[field].isnull().sum(),
+                        'last_12_months_count': len(dates[dates >= (datetime.now() - timedelta(days=365))])
+                    }
+
         # Convert raw DataFrame to JSON, handling datetime objects
         raw_data = []
         for _, row in raw_df.iterrows():
@@ -524,11 +540,20 @@ def fetch_permits():
             raw_data.append(permit_dict)
 
         logger.info(f"Successfully fetched {len(raw_data)} raw permits")
+        logger.info("Date analysis results:")
+        for field, analysis in date_analysis.items():
+            logger.info(f"{field}:")
+            logger.info(f"  Range: {analysis['min_date']} to {analysis['max_date']}")
+            logger.info(f"  Unique dates: {analysis['unique_dates']}")
+            logger.info(f"  Null values: {analysis['null_count']}")
+            logger.info(f"  Records in last 12 months: {analysis['last_12_months_count']}")
+
         return jsonify({
             'status': 'success',
             'message': 'Raw permit data retrieved successfully',
             'total_records': len(raw_data),
             'columns': raw_df.columns.tolist(),
+            'date_analysis': date_analysis,
             'data': raw_data
         })
 
