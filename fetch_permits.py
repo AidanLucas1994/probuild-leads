@@ -22,6 +22,18 @@ logger = logging.getLogger(__name__)
 
 pd.set_option('display.max_columns', None)
 
+# Define default values for required fields as a module-level constant
+DEFAULT_VALUES = {
+    'PERMITNO': 'UNKNOWN',
+    'PERMIT_TYPE': 'Unknown',
+    'PERMIT_STATUS': 'Unknown',
+    'CONSTRUCTION_VALUE': 0.0,
+    'WORK_TYPE': 'Unknown',
+    'SUB_WORK_TYPE': 'Unknown',
+    'PERMIT_DESCRIPTION': 'No description provided',
+    'FOLDERNAME': 'Address not provided'
+}
+
 def fetch_permit_data():
     """
     Fetch building permit data from the ArcGIS REST API endpoint.
@@ -33,8 +45,8 @@ def fetch_permit_data():
         end_date = int(pd.Timestamp('2025-12-31').timestamp() * 1000)
         
         # Build the where clause for the query
-        # Using >= and < to ensure we get all permits from 2024
-        where_clause = "APPLICATION_DATE >= timestamp '2024-01-01 00:00:00'"
+        # Format: APPLICATION_DATE >= timestamp '2024-01-01 00:00:00' AND APPLICATION_DATE <= timestamp '2025-12-31 23:59:59'
+        where_clause = f"APPLICATION_DATE >= timestamp '2024-01-01 00:00:00' AND APPLICATION_DATE <= timestamp '2025-12-31 23:59:59'"
         
         logger.info("Using where clause: {}".format(where_clause))
         
@@ -106,17 +118,6 @@ def fetch_permit_data():
             logger.info("\nPermits by year:")
             for year, count in year_counts.items():
                 logger.info("{}: {} permits".format(year, count))
-            
-            # Log sample of permits for verification
-            logger.info("\nSample of 5 permits:")
-            sample_permits = df.sample(min(5, len(df)))
-            for _, permit in sample_permits.iterrows():
-                logger.info("Permit {}: {} - {} - {}".format(
-                    permit.get('PERMITNO', 'Unknown'),
-                    permit['APPLICATION_DATE'].strftime('%Y-%m-%d'),
-                    permit.get('PERMIT_TYPE', 'Unknown Type'),
-                    permit.get('CONSTRUCTION_VALUE', 'N/A')
-                ))
         
         return df
         
@@ -194,6 +195,31 @@ def transform_permit_data(df):
             current_month_permits = df[df['APPLICATION_DATE'] >= current_month]
             logger.info("\nPermits in current month: {}".format(len(current_month_permits)))
 
+        # Step 1: Initial Data Analysis and Default Values Setup
+        logger.info("=== Step 1: Initial Data Analysis and Default Values ===")
+        
+        # Log initial state
+        logger.info("Initial DataFrame shape: {}".format(df.shape))
+        logger.info("Missing values before filling defaults:")
+        for col in DEFAULT_VALUES.keys():
+            if col in df.columns:
+                missing = df[col].isnull().sum()
+                logger.info("{}: {} missing values".format(col, missing))
+        
+        # Fill missing values with defaults
+        for col, default_val in DEFAULT_VALUES.items():
+            if col in df.columns:
+                df[col] = df[col].fillna(default_val)
+                
+        # Step 2: Date Handling and Validation
+        logger.info("\n=== Step 2: Date Handling and Validation ===")
+        
+        # Convert APPLICATION_DATE to datetime with error handling
+        logger.info("Converting APPLICATION_DATE to datetime...")
+        if 'APPLICATION_DATE' not in df.columns:
+            df['APPLICATION_DATE'] = pd.NaT
+            logger.warning("APPLICATION_DATE column not found, created with NaT values")
+        
         # Store original length for logging
         original_length = len(df)
         
@@ -228,6 +254,70 @@ def transform_permit_data(df):
                 'details': 'All {} records had invalid dates'.format(original_length)
             }
             
+        # Enhanced date filtering section
+        logger.info("\n=== Step 3: Date Filtering ===")
+        
+        # Filter for 2024-2025 permits
+        start_date = pd.Timestamp('2024-01-01')
+        end_date = pd.Timestamp('2025-12-31')
+        
+        logger.info("\nDate Filtering Details:")
+        logger.info("Filtering for permits between {} and {}".format(
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d')
+        ))
+
+        # Count permits before filtering
+        total_before = len(df)
+        
+        # Apply date filter with detailed logging
+        recent_permits = df[
+            (df['APPLICATION_DATE'] >= start_date) & 
+            (df['APPLICATION_DATE'] <= end_date)
+        ]
+        total_after = len(recent_permits)
+        
+        logger.info("\nFiltering Results:")
+        logger.info("Total permits before filtering: {}".format(total_before))
+        logger.info("Permits in 2024-2025: {}".format(total_after))
+        logger.info("Permits excluded: {}".format(total_before - total_after))
+        
+        if total_after == 0:
+            # If no permits are within range, log the most recent ones
+            logger.info("\nMost recent permits (all excluded):")
+            most_recent = df.nlargest(5, 'APPLICATION_DATE')
+            for _, permit in most_recent.iterrows():
+                logger.info("Permit {}: {} - {} - {} - ${}".format(
+                    permit.get('PERMITNO', 'Unknown'),
+                    permit['APPLICATION_DATE'].strftime('%Y-%m-%d'),
+                    permit.get('PERMIT_TYPE', 'Unknown Type'),
+                    permit.get('CONSTRUCTION_VALUE', 'N/A')
+                ))
+
+        # Update the df with filtered data
+        df = recent_permits
+
+        if df.empty:
+            logger.warning("No permits found for 2024-2025")
+            return {
+                'status': 'warning',
+                'message': 'No permits found for 2024-2025',
+                'details': 'No permits found between {} and {}'.format(
+                    start_date.strftime('%Y-%m-%d'),
+                    end_date.strftime('%Y-%m-%d')),
+                'metadata': {
+                    'total_records_processed': original_length,
+                    'invalid_dates_removed': records_removed,
+                    'old_permits_filtered': total_before - total_after,
+                    'date_range': {
+                        'earliest': min_date.strftime('%Y-%m-%d'),
+                        'latest': max_date.strftime('%Y-%m-%d'),
+                        'filter_start': start_date.strftime('%Y-%m-%d'),
+                        'filter_end': end_date.strftime('%Y-%m-%d')
+                    }
+                }
+            }
+        
         # Step 4: Data Cleaning and Standardization
         logger.info("\n=== Step 4: Data Cleaning and Standardization ===")
         
@@ -322,8 +412,8 @@ def transform_permit_data(df):
                 'invalid_dates_removed': records_removed,
                 'records_within_time_range': len(df_final),
                 'fields_with_defaults': {
-                    field: sum(df_final[output_columns[field]] == default_values[field])
-                    for field in default_values.keys()
+                    field: sum(df_final[output_columns[field]] == DEFAULT_VALUES[field])
+                    for field in DEFAULT_VALUES.keys()
                     if field in df.columns and output_columns[field] in df_final.columns
                 }
             }
