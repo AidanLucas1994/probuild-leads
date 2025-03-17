@@ -1076,6 +1076,7 @@ function debounce(func, wait) {
 }
 
 function fetchLeadsData() {
+    console.log('Fetching leads data...');
     const queryParams = new URLSearchParams({
         page: currentPage,
         per_page: itemsPerPage
@@ -1108,13 +1109,19 @@ function fetchLeadsData() {
     console.log('Fetching leads with query parameters:', Object.fromEntries(queryParams));
 
     fetch(`/leads?${queryParams.toString()}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
+            console.log('Received data:', data);
             if (data.status === 'success') {
                 lastFetchedData = data;
                 updateUI(data);
             } else {
-                console.error('Error fetching leads:', data.message);
+                console.error('Error in response:', data.message);
             }
         })
         .catch(error => {
@@ -1130,8 +1137,8 @@ function updateUI(data) {
     updateActiveFilters();
     
     // Update contractor sections based on current view mode
-    const isCardView = document.querySelector('.view-toggle-btn[data-view="card"]').classList.contains('active');
-    updateContractorSections(data, isCardView ? 'card' : 'table');
+    const isCardView = document.getElementById('cardView').classList.contains('active');
+    updateContractorSections(data.categorized_permits, isCardView ? 'card' : 'table');
     
     // Update pagination
     updatePagination(data.total_permits);
@@ -1547,7 +1554,7 @@ function initializeViewToggle() {
     tableViewBtn.addEventListener('click', () => {
         tableViewBtn.classList.add('active');
         cardViewBtn.classList.remove('active');
-        if (lastFetchedData) {
+        if (lastFetchedData && lastFetchedData.categorized_permits) {
             updateContractorSections(lastFetchedData.categorized_permits, 'table');
         }
     });
@@ -1555,7 +1562,7 @@ function initializeViewToggle() {
     cardViewBtn.addEventListener('click', () => {
         cardViewBtn.classList.add('active');
         tableViewBtn.classList.remove('active');
-        if (lastFetchedData) {
+        if (lastFetchedData && lastFetchedData.categorized_permits) {
             updateContractorSections(lastFetchedData.categorized_permits, 'card');
         }
     });
