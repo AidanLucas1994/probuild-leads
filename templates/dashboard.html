@@ -25,17 +25,20 @@
             </div>
         </div>
 
+        <!-- Contractor Type Toggle Buttons -->
+        <div class="contractor-toggles">
+            <div class="toggle-group">
+                <button class="toggle-btn active" data-type="general">General</button>
+                <button class="toggle-btn" data-type="general contractor">General Contractor</button>
+                <button class="toggle-btn" data-type="electrician">Electrician</button>
+                <button class="toggle-btn" data-type="plumber">Plumber</button>
+            </div>
+        </div>
+
         <!-- Filter Controls -->
         <div class="filter-section">
             <h3>Filter Leads</h3>
             <div class="filter-controls">
-                <div class="filter-group">
-                    <label for="contractorType">Contractor Type</label>
-                    <select id="contractorType" class="filter-select">
-                        <option value="">All Contractor Types</option>
-                        <!-- Options will be populated dynamically -->
-                    </select>
-                </div>
                 <div class="filter-group">
                     <label for="status">Status</label>
                     <select id="status" class="filter-select">
@@ -716,6 +719,45 @@
     background: #d3f9d8;
     color: #2b8a3e;
 }
+
+/* Contractor Type Toggle Styles */
+.contractor-toggles {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.toggle-group {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.toggle-btn {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+    color: #495057;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: capitalize;
+}
+
+.toggle-btn:hover {
+    background: #f8f9fa;
+    border-color: #ced4da;
+}
+
+.toggle-btn.active {
+    background: #e7f5ff;
+    border-color: #339af0;
+    color: #1864ab;
+}
 </style>
 
 <script>
@@ -731,6 +773,7 @@ let currentFilters = {
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeFilters();
+    initializeContractorToggles();
     fetchLeadsData();
 
     // Initialize view toggle
@@ -1355,6 +1398,40 @@ function initializeViewToggle() {
         cardViewBtn.classList.add('active');
         tableViewBtn.classList.remove('active');
         updateContractorSections(lastFetchedData.categorized_permits, 'card');
+    });
+}
+
+function initializeContractorToggles() {
+    const toggleGroup = document.querySelector('.toggle-group');
+    toggleGroup.addEventListener('click', (e) => {
+        const btn = e.target.closest('.toggle-btn');
+        if (!btn) return;
+
+        // Update active state
+        document.querySelectorAll('.toggle-btn').forEach(button => {
+            button.classList.remove('active');
+        });
+        btn.classList.add('active');
+
+        // Update contractor type filter
+        const contractorType = btn.dataset.type;
+        const contractorSelect = document.getElementById('contractorType');
+        
+        // Clear existing selections
+        Array.from(contractorSelect.options).forEach(option => {
+            option.selected = false;
+        });
+
+        // Find and select the matching option
+        Array.from(contractorSelect.options).forEach(option => {
+            if (option.value.toLowerCase() === contractorType.toLowerCase()) {
+                option.selected = true;
+            }
+        });
+
+        // Update filters and fetch data
+        handleFilterChange({ target: contractorSelect });
+        applyFilters();
     });
 }
 
