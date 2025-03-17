@@ -912,6 +912,8 @@ function fetchLeadsData() {
         })
         .then(data => {
             if (data.status === 'success') {
+                // Store the fetched data for view toggling
+                lastFetchedData = data;
                 updateUI(data);
             } else {
                 showError(data.message || 'An error occurred while fetching data');
@@ -951,7 +953,9 @@ function showError(message) {
 
 function updateUI(data) {
     updateContractorStats(data.summary);
-    updateContractorSections(data.categorized_permits);
+    // Get the current view mode
+    const isCardView = document.getElementById('cardView').classList.contains('active');
+    updateContractorSections(data.categorized_permits, isCardView ? 'card' : 'table');
     updatePagination(data.pagination);
     updateValueRangePlaceholders(data);
     populateFilterOptions(data);
