@@ -29,10 +29,10 @@
         <div class="contractor-toggles">
             <div class="toggle-group">
                 <button class="toggle-btn active" data-type="all">All</button>
-                <button class="toggle-btn" data-type="General">General</button>
-                <button class="toggle-btn" data-type="General Contractor">General Contractor</button>
-                <button class="toggle-btn" data-type="Electrician">Electrician</button>
-                <button class="toggle-btn" data-type="Plumber">Plumber</button>
+                <button class="toggle-btn" data-type="general">General</button>
+                <button class="toggle-btn" data-type="general_contractor">General Contractor</button>
+                <button class="toggle-btn" data-type="electrician">Electrician</button>
+                <button class="toggle-btn" data-type="plumber">Plumber</button>
             </div>
         </div>
 
@@ -936,7 +936,7 @@ function fetchLeadsData() {
     // Add contractor type filter
     if (currentFilters.contractorType.length > 0) {
         currentFilters.contractorType.forEach(type => {
-            queryParams.append('contractor_type[]', type);
+            queryParams.append('contractor_type[]', encodeURIComponent(type));
         });
     }
     
@@ -1446,15 +1446,26 @@ function initializeContractorToggles() {
         // Get the contractor type from the button
         const contractorType = btn.dataset.type;
         
+        // Map the toggle button types to the actual contractor types
+        const contractorTypeMap = {
+            'all': '',
+            'general': 'General',
+            'general_contractor': 'General Contractor',
+            'electrician': 'Electrician',
+            'plumber': 'Plumber'
+        };
+
         // Update filters based on the selected toggle
         if (contractorType === 'all') {
             currentFilters.contractorType = [];
         } else {
-            currentFilters.contractorType = [contractorType];
+            const mappedType = contractorTypeMap[contractorType];
+            currentFilters.contractorType = [mappedType];
         }
 
         // Log the current state for debugging
         console.log('Selected contractor type:', contractorType);
+        console.log('Mapped contractor type:', currentFilters.contractorType);
         console.log('Current filters:', currentFilters);
 
         // Reset to first page and fetch new data
