@@ -771,32 +771,58 @@ let currentFilters = {
     minValue: null,
     maxValue: null
 };
+let lastFetchedData = null;
 
+// Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
-    initializeFilters();
-    initializeContractorToggles();
-    fetchLeadsData();
-
-    // Initialize view toggle
-    initializeViewToggle();
+    console.log('Initializing dashboard...');
+    
+    // Initialize all components
+    try {
+        initializeFilters();
+        initializeContractorToggles();
+        initializeViewToggle();
+        
+        // Fetch initial data
+        fetchLeadsData();
+        
+        console.log('Dashboard initialization complete');
+    } catch (error) {
+        console.error('Error during initialization:', error);
+    }
 });
 
 function initializeFilters() {
-    // Add event listeners for filter changes (removed contractorType)
+    console.log('Initializing filters...');
+    
+    // Add event listeners for filter changes
     ['status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
-        select.addEventListener('change', handleFilterChange);
+        if (select) {
+            select.addEventListener('change', handleFilterChange);
+        } else {
+            console.error(`Filter element not found: ${filterId}`);
+        }
     });
 
     // Add event listeners for value inputs
-    document.getElementById('minValue').addEventListener('input', debounce(handleValueChange, 500));
-    document.getElementById('maxValue').addEventListener('input', debounce(handleValueChange, 500));
+    const minValueInput = document.getElementById('minValue');
+    const maxValueInput = document.getElementById('maxValue');
+    if (minValueInput && maxValueInput) {
+        minValueInput.addEventListener('input', debounce(handleValueChange, 500));
+        maxValueInput.addEventListener('input', debounce(handleValueChange, 500));
+    }
 
     // Add event listeners for buttons
-    document.getElementById('resetFilters').addEventListener('click', resetFilters);
-    document.getElementById('applyFilters').addEventListener('click', applyFilters);
-    document.getElementById('prevPage').addEventListener('click', () => changePage(-1));
-    document.getElementById('nextPage').addEventListener('click', () => changePage(1));
+    const resetBtn = document.getElementById('resetFilters');
+    const applyBtn = document.getElementById('applyFilters');
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+
+    if (resetBtn) resetBtn.addEventListener('click', resetFilters);
+    if (applyBtn) applyBtn.addEventListener('click', applyFilters);
+    if (prevBtn) prevBtn.addEventListener('click', () => changePage(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => changePage(1));
 }
 
 function handleFilterChange(event) {
@@ -1425,24 +1451,42 @@ function showPermitDetails(permit) {
 }
 
 function initializeViewToggle() {
+    console.log('Initializing view toggle...');
+    
     const tableViewBtn = document.getElementById('tableView');
     const cardViewBtn = document.getElementById('cardView');
     
+    if (!tableViewBtn || !cardViewBtn) {
+        console.error('View toggle buttons not found');
+        return;
+    }
+
     tableViewBtn.addEventListener('click', () => {
         tableViewBtn.classList.add('active');
         cardViewBtn.classList.remove('active');
-        updateContractorSections(lastFetchedData.categorized_permits, 'table');
+        if (lastFetchedData) {
+            updateContractorSections(lastFetchedData.categorized_permits, 'table');
+        }
     });
     
     cardViewBtn.addEventListener('click', () => {
         cardViewBtn.classList.add('active');
         tableViewBtn.classList.remove('active');
-        updateContractorSections(lastFetchedData.categorized_permits, 'card');
+        if (lastFetchedData) {
+            updateContractorSections(lastFetchedData.categorized_permits, 'card');
+        }
     });
 }
 
 function initializeContractorToggles() {
+    console.log('Initializing contractor toggles...');
+    
     const toggleGroup = document.querySelector('.toggle-group');
+    if (!toggleGroup) {
+        console.error('Toggle group not found');
+        return;
+    }
+
     toggleGroup.addEventListener('click', (e) => {
         const btn = e.target.closest('.toggle-btn');
         if (!btn) return;
@@ -1483,7 +1527,5 @@ function initializeContractorToggles() {
         fetchLeadsData();
     });
 }
-
-let lastFetchedData = null;
 </script>
 {% endblock %}
