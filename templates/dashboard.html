@@ -24,27 +24,24 @@
             <div class="filter-controls">
                 <div class="filter-group">
                     <label for="contractorType">Contractor Type</label>
-                    <select id="contractorType" class="filter-select" multiple>
-                        <option value="" disabled>Select Contractor Types...</option>
+                    <select id="contractorType" class="filter-select">
+                        <option value="">All Contractor Types</option>
                         <!-- Options will be populated dynamically -->
                     </select>
-                    <div class="selected-options" id="contractorType-selected"></div>
                 </div>
                 <div class="filter-group">
                     <label for="status">Status</label>
-                    <select id="status" class="filter-select" multiple>
-                        <option value="" disabled>Select Statuses...</option>
+                    <select id="status" class="filter-select">
+                        <option value="">All Statuses</option>
                         <!-- Options will be populated dynamically -->
                     </select>
-                    <div class="selected-options" id="status-selected"></div>
                 </div>
                 <div class="filter-group">
                     <label for="workType">Work Type</label>
-                    <select id="workType" class="filter-select" multiple>
-                        <option value="" disabled>Select Work Types...</option>
+                    <select id="workType" class="filter-select">
+                        <option value="">All Work Types</option>
                         <!-- Options will be populated dynamically -->
                     </select>
-                    <div class="selected-options" id="workType-selected"></div>
                 </div>
                 <div class="filter-group value-range">
                     <label>Construction Value Range</label>
@@ -63,7 +60,7 @@
                 <div class="filter-actions">
                     <button id="resetFilters" class="reset-btn">
                         <span class="btn-icon">×</span>
-                        Clear All Filters
+                        Clear Filters
                     </button>
                     <button id="applyFilters" class="apply-btn">
                         Apply Filters
@@ -215,19 +212,15 @@
 }
 
 .filter-section h3 {
-    margin: 0 0 1rem 0;
+    margin: 0 0 1.5rem 0;
     color: #2c3e50;
     font-size: 1.2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
 }
 
 .filter-controls {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1.5rem;
-    align-items: start;
     margin-bottom: 1rem;
 }
 
@@ -240,22 +233,23 @@
 .filter-group label {
     font-size: 0.9rem;
     color: #495057;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
+    font-weight: 500;
 }
 
 .filter-select {
-    padding: 0.75rem;
+    width: 100%;
+    padding: 0.625rem;
     border: 1px solid #ced4da;
-    border-radius: 6px;
+    border-radius: 4px;
     font-size: 0.95rem;
     color: #495057;
     background-color: white;
-    min-height: 42px;
-    max-height: 200px;
-    overflow-y: auto;
     cursor: pointer;
-    transition: all 0.2s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23495057' d='M6 8.825L1.175 4 2.237 2.938 6 6.7l3.763-3.762L10.825 4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
 }
 
 .filter-select:focus {
@@ -265,48 +259,7 @@
 }
 
 .filter-select option {
-    padding: 0.75rem;
-    margin: 2px 0;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.filter-select option:checked {
-    background-color: #007bff;
-    color: white;
-}
-
-.filter-select option:hover {
-    background-color: #f8f9fa;
-}
-
-.selected-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    min-height: 24px;
-    margin-top: 0.25rem;
-}
-
-.selected-option {
-    background: #e9ecef;
-    padding: 0.25rem 0.75rem;
-    border-radius: 16px;
-    font-size: 0.85rem;
-    color: #495057;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.selected-option .remove {
-    cursor: pointer;
-    color: #6c757d;
-    font-weight: bold;
-}
-
-.selected-option .remove:hover {
-    color: #dc3545;
+    padding: 0.5rem;
 }
 
 .value-range .range-inputs {
@@ -326,18 +279,16 @@
     top: 50%;
     transform: translateY(-50%);
     color: #6c757d;
-    font-weight: 500;
 }
 
 .value-input {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.625rem;
     padding-left: 1.75rem;
     border: 1px solid #ced4da;
-    border-radius: 6px;
+    border-radius: 4px;
     font-size: 0.95rem;
     color: #495057;
-    transition: all 0.2s ease;
 }
 
 .value-input:focus {
@@ -349,18 +300,19 @@
 .range-separator {
     color: #6c757d;
     font-weight: 500;
+    padding: 0 0.5rem;
 }
 
 .filter-actions {
     display: flex;
     gap: 1rem;
-    margin-top: 1rem;
+    align-items: flex-end;
 }
 
 .reset-btn, .apply-btn {
-    padding: 0.75rem 1.5rem;
+    padding: 0.625rem 1.25rem;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     font-size: 0.95rem;
     font-weight: 500;
     cursor: pointer;
@@ -485,10 +437,7 @@ let currentFilters = {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize filter event listeners
     initializeFilters();
-    
-    // Initial data load
     fetchLeadsData();
 });
 
@@ -496,9 +445,7 @@ function initializeFilters() {
     // Add event listeners for filter changes
     ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
-        select.addEventListener('change', function() {
-            updateSelectedOptions(filterId);
-        });
+        select.addEventListener('change', handleFilterChange);
     });
 
     // Add event listeners for value inputs
@@ -510,47 +457,21 @@ function initializeFilters() {
     document.getElementById('applyFilters').addEventListener('click', applyFilters);
     document.getElementById('prevPage').addEventListener('click', () => changePage(-1));
     document.getElementById('nextPage').addEventListener('click', () => changePage(1));
-
-    // Initialize selected options display
-    ['contractorType', 'status', 'workType'].forEach(updateSelectedOptions);
 }
 
-function updateSelectedOptions(filterId) {
-    const select = document.getElementById(filterId);
-    const selectedContainer = document.getElementById(`${filterId}-selected`);
-    selectedContainer.innerHTML = '';
-
-    Array.from(select.selectedOptions).forEach(option => {
-        if (option.value && option.value !== '') {
-            const tag = document.createElement('span');
-            tag.className = 'selected-option';
-            tag.innerHTML = `
-                ${option.text}
-                <span class="remove" data-value="${option.value}">×</span>
-            `;
-            tag.querySelector('.remove').addEventListener('click', () => {
-                option.selected = false;
-                updateSelectedOptions(filterId);
-                updateCurrentFilters();
-            });
-            selectedContainer.appendChild(tag);
-        }
-    });
-
-    updateCurrentFilters();
+function handleFilterChange(event) {
+    const select = event.target;
+    const filterId = select.id;
+    const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
+    
+    currentFilters[filterId] = selectedValues.filter(value => value !== '');
     updateActiveFilters();
 }
 
-function updateCurrentFilters() {
-    ['contractorType', 'status', 'workType'].forEach(filterId => {
-        const select = document.getElementById(filterId);
-        currentFilters[filterId] = Array.from(select.selectedOptions)
-            .map(option => option.value)
-            .filter(value => value !== '' && value !== 'all');
-    });
-
+function handleValueChange() {
     currentFilters.minValue = document.getElementById('minValue').value || null;
     currentFilters.maxValue = document.getElementById('maxValue').value || null;
+    updateActiveFilters();
 }
 
 function updateActiveFilters() {
@@ -562,12 +483,13 @@ function updateActiveFilters() {
     // Add filter tags for each category
     ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
-        Array.from(select.selectedOptions)
-            .filter(option => option.value && option.value !== '')
-            .forEach(option => {
+        const selectedOptions = Array.from(select.selectedOptions);
+        selectedOptions.forEach(option => {
+            if (option.value) {
                 hasActiveFilters = true;
                 addActiveFilterTag(container, filterId, option.value, option.text);
-            });
+            }
+        });
     });
 
     // Add value range filters if set
@@ -600,18 +522,18 @@ function addActiveFilterTag(container, type, value, text) {
 function removeFilter(type, value) {
     if (type === 'minValue' || type === 'maxValue') {
         document.getElementById(type).value = '';
+        currentFilters[type] = null;
     } else {
         const select = document.getElementById(type);
-        const option = Array.from(select.options).find(opt => opt.value === value);
-        if (option) option.selected = false;
-        updateSelectedOptions(type);
+        Array.from(select.options).forEach(option => {
+            if (option.value === value) {
+                option.selected = false;
+            }
+        });
+        currentFilters[type] = Array.from(select.selectedOptions)
+            .map(option => option.value)
+            .filter(val => val !== '');
     }
-    updateCurrentFilters();
-    applyFilters();
-}
-
-function handleValueChange() {
-    updateCurrentFilters();
     updateActiveFilters();
 }
 
@@ -623,8 +545,7 @@ function applyFilters() {
 function resetFilters() {
     ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
-        select.selectedIndex = -1;
-        updateSelectedOptions(filterId);
+        select.selectedIndex = 0;
     });
 
     document.getElementById('minValue').value = '';
@@ -737,6 +658,60 @@ function updateUI(data) {
     updateContractorSections(data.categorized_permits);
     updatePagination(data.pagination);
     updateValueRangePlaceholders(data);
+    populateFilterOptions(data);
+}
+
+function populateFilterOptions(data) {
+    // Get unique values from permits
+    const contractorTypes = new Set();
+    const statuses = new Set();
+    const workTypes = new Set();
+
+    Object.entries(data.categorized_permits).forEach(([contractorType, permits]) => {
+        contractorTypes.add(contractorType);
+        permits.forEach(permit => {
+            statuses.add(permit['Status']);
+            workTypes.add(permit['Work Type']);
+        });
+    });
+
+    // Update contractor type dropdown
+    const contractorSelect = document.getElementById('contractorType');
+    updateSelectOptions(contractorSelect, Array.from(contractorTypes).sort(), currentFilters.contractorType);
+
+    // Update status dropdown
+    const statusSelect = document.getElementById('status');
+    updateSelectOptions(statusSelect, Array.from(statuses).sort(), currentFilters.status);
+
+    // Update work type dropdown
+    const workTypeSelect = document.getElementById('workType');
+    updateSelectOptions(workTypeSelect, Array.from(workTypes).sort(), currentFilters.workType);
+}
+
+function updateSelectOptions(select, options, selectedValues) {
+    // Store current selection
+    const currentValue = select.value;
+
+    // Clear existing options except the first one (All option)
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    // Add new options
+    options.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        if (selectedValues && selectedValues.includes(value)) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+
+    // Restore selection if it still exists in new options
+    if (currentValue && options.includes(currentValue)) {
+        select.value = currentValue;
+    }
 }
 
 function updatePagination(pagination) {
