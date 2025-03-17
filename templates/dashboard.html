@@ -28,10 +28,11 @@
         <!-- Contractor Type Toggle Buttons -->
         <div class="contractor-toggles">
             <div class="toggle-group">
-                <button class="toggle-btn active" data-type="general">General</button>
-                <button class="toggle-btn" data-type="general contractor">General Contractor</button>
-                <button class="toggle-btn" data-type="electrician">Electrician</button>
-                <button class="toggle-btn" data-type="plumber">Plumber</button>
+                <button class="toggle-btn active" data-type="all">All</button>
+                <button class="toggle-btn" data-type="General">General</button>
+                <button class="toggle-btn" data-type="General Contractor">General Contractor</button>
+                <button class="toggle-btn" data-type="Electrician">Electrician</button>
+                <button class="toggle-btn" data-type="Plumber">Plumber</button>
             </div>
         </div>
 
@@ -884,7 +885,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    // Reset filter dropdowns (removed contractorType)
+    // Reset filter dropdowns
     ['status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         select.selectedIndex = 0;
@@ -894,11 +895,11 @@ function resetFilters() {
     document.getElementById('minValue').value = '';
     document.getElementById('maxValue').value = '';
 
-    // Reset contractor type toggles
+    // Reset contractor type toggles - set 'All' as active
     document.querySelectorAll('.toggle-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.querySelector('.toggle-btn[data-type="general"]').classList.add('active');
+    document.querySelector('.toggle-btn[data-type="all"]').classList.add('active');
 
     // Reset filter state
     currentFilters = {
@@ -1446,13 +1447,17 @@ function initializeContractorToggles() {
         const contractorType = btn.dataset.type;
         
         // Update filters based on the selected toggle
-        currentFilters.contractorType = contractorType === 'general' ? [] : [contractorType];
+        if (contractorType === 'all') {
+            currentFilters.contractorType = [];
+        } else {
+            currentFilters.contractorType = [contractorType];
+        }
 
         // Log the current state for debugging
         console.log('Selected contractor type:', contractorType);
         console.log('Current filters:', currentFilters);
 
-        // Apply filters and fetch new data
+        // Reset to first page and fetch new data
         currentPage = 1;
         fetchLeadsData();
     });
