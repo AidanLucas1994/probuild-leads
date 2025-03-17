@@ -583,14 +583,15 @@ def get_leads_by_contractor():
                 'error_details': str(e)
             }), 400
         
-        # Log other filter parameters
-        filter_params = {
-            'contractor_type': request.args.get('contractor_type'),
-            'status': request.args.get('status'),
-            'min_value': request.args.get('min_value'),
-            'max_value': request.args.get('max_value')
-        }
-        logger.info("Filter parameters: %s", filter_params)
+        # Get multi-select filter parameters
+        contractor_types = request.args.getlist('contractor_type[]')
+        statuses = request.args.getlist('status[]')
+        work_types = request.args.getlist('work_type[]')
+        min_value = request.args.get('min_value')
+        max_value = request.args.get('max_value')
+        
+        logger.info("Filter parameters: contractor_types=%s, statuses=%s, work_types=%s, min_value=%s, max_value=%s",
+                   contractor_types, statuses, work_types, min_value, max_value)
         
         # Fetch permit data
         logger.info("Fetching permit data from API...")
@@ -616,26 +617,40 @@ def get_leads_by_contractor():
         
         # Apply filters if provided
         filtered_permits = all_permits
-        if filter_params['contractor_type'] and filter_params['contractor_type'] != 'all':
-            filtered_permits = [p for p in filtered_permits if p['Contractor Type'] == filter_params['contractor_type']]
+        
+        # Filter by contractor types (if specified)
+        if contractor_types:
+            filtered_permits = [p for p in filtered_permits 
+                              if p['Contractor Type'] in contractor_types]
             logger.info("After contractor type filter: %d permits", len(filtered_permits))
             
-        if filter_params['status'] and filter_params['status'] != 'all':
-            filtered_permits = [p for p in filtered_permits if p['Status'].lower() == filter_params['status'].lower()]
+        # Filter by statuses (if specified)
+        if statuses:
+            filtered_permits = [p for p in filtered_permits 
+                              if p['Status'].lower() in [s.lower() for s in statuses]]
             logger.info("After status filter: %d permits", len(filtered_permits))
             
-        if filter_params['min_value']:
+        # Filter by work types (if specified)
+        if work_types:
+            filtered_permits = [p for p in filtered_permits 
+                              if p['Work Type'] in work_types]
+            logger.info("After work type filter: %d permits", len(filtered_permits))
+        
+        # Filter by value range
+        if min_value:
             try:
-                min_val = float(filter_params['min_value'])
-                filtered_permits = [p for p in filtered_permits if float(p['Construction Value'].replace('$', '').replace(',', '')) >= min_val]
+                min_val = float(min_value)
+                filtered_permits = [p for p in filtered_permits 
+                                 if float(p['Construction Value'].replace('$', '').replace(',', '')) >= min_val]
                 logger.info("After min value filter: %d permits", len(filtered_permits))
             except ValueError as e:
                 logger.warning("Invalid min_value parameter: %s", str(e))
                 
-        if filter_params['max_value']:
+        if max_value:
             try:
-                max_val = float(filter_params['max_value'])
-                filtered_permits = [p for p in filtered_permits if float(p['Construction Value'].replace('$', '').replace(',', '')) <= max_val]
+                max_val = float(max_value)
+                filtered_permits = [p for p in filtered_permits 
+                                 if float(p['Construction Value'].replace('$', '').replace(',', '')) <= max_val]
                 logger.info("After max value filter: %d permits", len(filtered_permits))
             except ValueError as e:
                 logger.warning("Invalid max_value parameter: %s", str(e))
