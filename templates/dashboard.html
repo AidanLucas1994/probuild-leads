@@ -801,9 +801,22 @@ function initializeFilters() {
 function handleFilterChange(event) {
     const select = event.target;
     const filterId = select.id;
-    const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
     
+    // Special handling for contractor type when using dropdown
+    if (filterId === 'contractorType') {
+        // Update toggle buttons to match dropdown selection
+        const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
+        document.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.classList.toggle('active', 
+                selectedValues.some(val => val.toLowerCase() === btn.dataset.type.toLowerCase())
+            );
+        });
+    }
+    
+    // Update current filters
+    const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
     currentFilters[filterId] = selectedValues.filter(value => value !== '');
+    
     updateActiveFilters();
 }
 
@@ -882,14 +895,23 @@ function applyFilters() {
 }
 
 function resetFilters() {
+    // Reset all filter dropdowns
     ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         select.selectedIndex = 0;
     });
 
+    // Reset value inputs
     document.getElementById('minValue').value = '';
     document.getElementById('maxValue').value = '';
 
+    // Reset contractor type toggles
+    document.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector('.toggle-btn[data-type="general"]').classList.add('active');
+
+    // Reset filter state
     currentFilters = {
         contractorType: [],
         status: [],
@@ -995,11 +1017,26 @@ function showError(message) {
 }
 
 function updateUI(data) {
+    if (!data || !data.summary || !data.categorized_permits) {
+        console.error('Invalid data structure received:', data);
+        return;
+    }
+
+    // Update contractor stats
     updateContractorStats(data.summary);
+    
     // Get the current view mode
     const isCardView = document.getElementById('cardView').classList.contains('active');
+    
+    // Update the display with the categorized permits
     updateContractorSections(data.categorized_permits, isCardView ? 'card' : 'table');
-    updatePagination(data.pagination);
+    
+    // Update pagination if available
+    if (data.pagination) {
+        updatePagination(data.pagination);
+    }
+    
+    // Update other UI elements
     updateValueRangePlaceholders(data);
     populateFilterOptions(data);
 }
@@ -1413,24 +1450,20 @@ function initializeContractorToggles() {
         });
         btn.classList.add('active');
 
-        // Update contractor type filter
+        // Get the contractor type from the button
         const contractorType = btn.dataset.type;
-        const contractorSelect = document.getElementById('contractorType');
         
-        // Clear existing selections
+        // Update the filters directly
+        currentFilters.contractorType = contractorType === 'general' ? [] : [contractorType];
+        
+        // Update the select element to match
+        const contractorSelect = document.getElementById('contractorType');
         Array.from(contractorSelect.options).forEach(option => {
-            option.selected = false;
+            option.selected = option.value.toLowerCase() === contractorType.toLowerCase();
         });
 
-        // Find and select the matching option
-        Array.from(contractorSelect.options).forEach(option => {
-            if (option.value.toLowerCase() === contractorType.toLowerCase()) {
-                option.selected = true;
-            }
-        });
-
-        // Update filters and fetch data
-        handleFilterChange({ target: contractorSelect });
+        // Update UI and fetch data
+        updateActiveFilters();
         applyFilters();
     });
 }
