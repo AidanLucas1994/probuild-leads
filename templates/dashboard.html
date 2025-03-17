@@ -45,32 +45,25 @@
                 </div>
                 <div class="filter-group">
                     <label for="workType">Work Type</label>
-                    <select id="workType" class="filter-select">
+                    <select id="workType" class="filter-select" multiple>
                         <option value="">All Work Types</option>
                         <!-- Options will be populated dynamically -->
                     </select>
                 </div>
-                <div class="filter-group value-range">
-                    <label>Construction Value Range</label>
-                    <div class="range-inputs">
-                        <div class="value-input-wrapper">
-                            <span class="currency-symbol">$</span>
-                            <input type="number" id="minValue" placeholder="Min Value" class="value-input">
-                        </div>
-                        <span class="range-separator">to</span>
-                        <div class="value-input-wrapper">
-                            <span class="currency-symbol">$</span>
-                            <input type="number" id="maxValue" placeholder="Max Value" class="value-input">
-                        </div>
-                    </div>
+                <div class="filter-group">
+                    <label for="minValue">Min Value</label>
+                    <input type="number" id="minValue" class="filter-input" placeholder="Min">
                 </div>
-                <div class="filter-actions">
-                    <button id="resetFilters" class="reset-btn">
-                        <span class="btn-icon">×</span>
-                        Clear Filters
+                <div class="filter-group">
+                    <label for="maxValue">Max Value</label>
+                    <input type="number" id="maxValue" class="filter-input" placeholder="Max">
+                </div>
+                <div class="filter-group">
+                    <button id="resetFilters" class="filter-btn reset-btn" style="display: none;">
+                        <i class="fas fa-times"></i> Reset Filters
                     </button>
-                    <button id="applyFilters" class="apply-btn">
-                        Apply Filters
+                    <button id="applyFilters" class="filter-btn apply-btn">
+                        <i class="fas fa-filter"></i> Apply Filters
                     </button>
                 </div>
             </div>
@@ -781,15 +774,26 @@ function initializeFilters() {
     if (nextBtn) nextBtn.addEventListener('click', () => changePage(1));
 }
 
-function handleFilterChange(event) {
-    const select = event.target;
+function handleFilterChange(e) {
+    const select = e.target;
     const filterId = select.id;
     
-    // Update current filters
-    const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
-    currentFilters[filterId] = selectedValues.filter(value => value !== '');
+    // Get selected values
+    const selectedValues = Array.from(select.selectedOptions).map(opt => opt.value);
     
+    // Update current filters
+    currentFilters[filterId] = selectedValues;
+    
+    // Log the change for debugging
+    console.log(`Filter changed - ${filterId}:`, selectedValues);
+    console.log('Current filters:', currentFilters);
+    
+    // Update active filters display
     updateActiveFilters();
+    
+    // Reset to first page and fetch new data
+    currentPage = 1;
+    fetchLeadsData();
 }
 
 function handleValueChange() {
@@ -905,121 +909,65 @@ function debounce(func, wait) {
 }
 
 function fetchLeadsData() {
-    const queryParams = new URLSearchParams();
-    queryParams.append('page', currentPage);
-    queryParams.append('limit', itemsPerPage);
-    
-    // Add contractor type filter
+    const queryParams = new URLSearchParams({
+        page: currentPage,
+        per_page: itemsPerPage
+    });
+
+    // Add filter parameters
     if (currentFilters.contractorType.length > 0) {
         currentFilters.contractorType.forEach(type => {
-            // Convert to lowercase for consistency
-            const normalizedType = type.toLowerCase();
-            queryParams.append('contractor_type[]', normalizedType);
-            console.log('Adding contractor type filter:', normalizedType);
+            queryParams.append('contractor_type[]', type);
         });
     }
-    
-    // Add other filters
     if (currentFilters.status.length > 0) {
         currentFilters.status.forEach(status => {
             queryParams.append('status[]', status);
         });
     }
-    
     if (currentFilters.workType.length > 0) {
         currentFilters.workType.forEach(type => {
             queryParams.append('work_type[]', type);
         });
     }
-    
-    if (currentFilters.minValue) queryParams.append('min_value', currentFilters.minValue);
-    if (currentFilters.maxValue) queryParams.append('max_value', currentFilters.maxValue);
+    if (currentFilters.minValue) {
+        queryParams.append('min_value', currentFilters.minValue);
+    }
+    if (currentFilters.maxValue) {
+        queryParams.append('max_value', currentFilters.maxValue);
+    }
 
     // Log the query parameters for debugging
-    console.log('Query parameters:', queryParams.toString());
-
-    // Show loading state
-    showLoading();
+    console.log('Fetching leads with query parameters:', Object.fromEntries(queryParams));
 
     fetch(`/leads?${queryParams.toString()}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            // Log the response data for debugging
-            console.log('Received data:', data);
-            
             if (data.status === 'success') {
-                // Log the categorized permits for debugging
-                console.log('Categorized permits:', Object.keys(data.categorized_permits));
                 lastFetchedData = data;
                 updateUI(data);
             } else {
-                console.error('Error in response:', data.message);
-                showError(data.message || 'An error occurred while fetching data');
+                console.error('Error fetching leads:', data.message);
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            showError('Failed to fetch leads data');
-        })
-        .finally(() => {
-            hideLoading();
+            console.error('Error fetching leads:', error);
         });
 }
 
-function showLoading() {
-    const loadingDiv = document.createElement('div');
-    loadingDiv.id = 'loading';
-    loadingDiv.className = 'loading';
-    loadingDiv.textContent = 'Loading...';
-    document.querySelector('.dashboard-content').appendChild(loadingDiv);
-}
-
-function hideLoading() {
-    const loadingDiv = document.getElementById('loading');
-    if (loadingDiv) {
-        loadingDiv.remove();
-    }
-}
-
-function showError(message) {
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.textContent = message;
-    document.querySelector('.dashboard-content').appendChild(errorDiv);
-    setTimeout(() => errorDiv.remove(), 5000);
-}
-
 function updateUI(data) {
-    // Log the data being processed
-    console.log('Updating UI with data:', data);
-
-    if (!data || !data.summary || !data.categorized_permits) {
-        console.error('Invalid data structure received:', data);
-        return;
-    }
-
-    // Update contractor stats
-    updateContractorStats(data.summary);
-    
-    // Get the current view mode
-    const isCardView = document.getElementById('cardView').classList.contains('active');
-    
-    // Update the display with the categorized permits
-    updateContractorSections(data.categorized_permits, isCardView ? 'card' : 'table');
-    
-    // Update pagination if available
-    if (data.pagination) {
-        updatePagination(data.pagination);
-    }
-    
-    // Update other UI elements
-    updateValueRangePlaceholders(data);
+    // Update filter options
     populateFilterOptions(data);
+    
+    // Update active filters display
+    updateActiveFilters();
+    
+    // Update contractor sections based on current view mode
+    const isCardView = document.querySelector('.view-toggle-btn[data-view="card"]').classList.contains('active');
+    updateContractorSections(data, isCardView ? 'card' : 'table');
+    
+    // Update pagination
+    updatePagination(data.total_permits);
 }
 
 function populateFilterOptions(data) {
@@ -1050,38 +998,50 @@ function populateFilterOptions(data) {
 }
 
 function updateSelectOptions(select, options, selectedValues) {
-    // Store current selection
-    const currentValue = select.value;
-
-    // Clear existing options except the first one (All option)
+    // Store the current selected values
+    const currentSelected = Array.from(select.selectedOptions).map(opt => opt.value);
+    
+    // Clear existing options except the first one
     while (select.options.length > 1) {
         select.remove(1);
     }
-
+    
     // Add new options
-    options.forEach(value => {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = value;
-        if (selectedValues && selectedValues.includes(value)) {
-            option.selected = true;
+    options.forEach(option => {
+        if (option) { // Only add non-empty options
+            const opt = document.createElement('option');
+            opt.value = option;
+            opt.textContent = option;
+            select.appendChild(opt);
         }
-        select.appendChild(option);
     });
-
-    // Restore selection if it still exists in new options
-    if (currentValue && options.includes(currentValue)) {
-        select.value = currentValue;
+    
+    // Restore selected values
+    if (selectedValues && selectedValues.length > 0) {
+        selectedValues.forEach(value => {
+            const option = Array.from(select.options).find(opt => opt.value === value);
+            if (option) {
+                option.selected = true;
+            }
+        });
+    } else if (currentSelected.length > 0) {
+        // If no new selected values provided, restore previous selections
+        currentSelected.forEach(value => {
+            const option = Array.from(select.options).find(opt => opt.value === value);
+            if (option) {
+                option.selected = true;
+            }
+        });
     }
 }
 
-function updatePagination(pagination) {
-    document.getElementById('prevPage').disabled = !pagination.has_prev;
-    document.getElementById('nextPage').disabled = !pagination.has_next;
+function updatePagination(totalPermits) {
+    document.getElementById('prevPage').disabled = currentPage === 1;
+    document.getElementById('nextPage').disabled = currentPage === Math.ceil(totalPermits / itemsPerPage);
     document.getElementById('currentPage').textContent = 
-        `Page ${pagination.page} of ${pagination.total_pages}`;
+        `Page ${currentPage} of ${Math.ceil(totalPermits / itemsPerPage)}`;
     document.getElementById('pagination-summary').textContent = 
-        `Showing ${pagination.start_index} to ${pagination.end_index} of ${pagination.total_records} permits`;
+        `Showing ${((currentPage - 1) * itemsPerPage + 1)} to ${Math.min(currentPage * itemsPerPage, totalPermits)} of ${totalPermits} permits`;
 }
 
 function changePage(delta) {
