@@ -40,13 +40,6 @@
             <h3>Filter Leads</h3>
             <div class="filter-controls">
                 <div class="filter-group">
-                    <label for="contractorType">Contractor Type</label>
-                    <select id="contractorType" class="filter-select" multiple>
-                        <option value="">All Types</option>
-                        <!-- Options will be populated dynamically -->
-                    </select>
-                </div>
-                <div class="filter-group">
                     <label for="status">Status</label>
                     <select id="status" class="filter-select">
                         <option value="">All Statuses</option>
@@ -788,8 +781,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeFilters() {
-    // Add event listeners for filter changes
-    ['contractorType', 'status', 'workType'].forEach(filterId => {
+    // Add event listeners for filter changes (removed contractorType)
+    ['status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         select.addEventListener('change', handleFilterChange);
     });
@@ -808,17 +801,6 @@ function initializeFilters() {
 function handleFilterChange(event) {
     const select = event.target;
     const filterId = select.id;
-    
-    // Special handling for contractor type when using dropdown
-    if (filterId === 'contractorType') {
-        // Update toggle buttons to match dropdown selection
-        const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
-        document.querySelectorAll('.toggle-btn').forEach(btn => {
-            btn.classList.toggle('active', 
-                selectedValues.some(val => val.toLowerCase() === btn.dataset.type.toLowerCase())
-            );
-        });
-    }
     
     // Update current filters
     const selectedValues = Array.from(select.selectedOptions).map(option => option.value);
@@ -840,7 +822,7 @@ function updateActiveFilters() {
     let hasActiveFilters = false;
 
     // Add filter tags for each category
-    ['contractorType', 'status', 'workType'].forEach(filterId => {
+    ['status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         const selectedOptions = Array.from(select.selectedOptions);
         selectedOptions.forEach(option => {
@@ -902,8 +884,8 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    // Reset all filter dropdowns
-    ['contractorType', 'status', 'workType'].forEach(filterId => {
+    // Reset filter dropdowns (removed contractorType)
+    ['status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         select.selectedIndex = 0;
     });
@@ -1059,21 +1041,15 @@ function updateUI(data) {
 
 function populateFilterOptions(data) {
     // Get unique values from permits
-    const contractorTypes = new Set();
     const statuses = new Set();
     const workTypes = new Set();
 
     Object.entries(data.categorized_permits).forEach(([contractorType, permits]) => {
-        contractorTypes.add(contractorType);
         permits.forEach(permit => {
             statuses.add(permit['Status']);
             workTypes.add(permit['Work Type']);
         });
     });
-
-    // Update contractor type dropdown
-    const contractorSelect = document.getElementById('contractorType');
-    updateSelectOptions(contractorSelect, Array.from(contractorTypes).sort(), currentFilters.contractorType);
 
     // Update status dropdown
     const statusSelect = document.getElementById('status');
@@ -1469,19 +1445,15 @@ function initializeContractorToggles() {
         // Get the contractor type from the button
         const contractorType = btn.dataset.type;
         
-        // Clear existing filters
-        currentFilters.contractorType = [];
-        
         // Update filters based on the selected toggle
-        if (contractorType !== 'general') {
-            currentFilters.contractorType.push(contractorType);
-        }
+        currentFilters.contractorType = contractorType === 'general' ? [] : [contractorType];
 
         // Log the current state for debugging
         console.log('Selected contractor type:', contractorType);
         console.log('Current filters:', currentFilters);
 
-        // Fetch new data
+        // Apply filters and fetch new data
+        currentPage = 1;
         fetchLeadsData();
     });
 }
