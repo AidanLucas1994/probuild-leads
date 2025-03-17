@@ -25,21 +25,17 @@
             </div>
         </div>
 
-        <!-- Contractor Type Toggle Buttons -->
-        <div class="contractor-toggles">
-            <div class="toggle-group">
-                <button class="toggle-btn active" data-type="all">All</button>
-                <button class="toggle-btn" data-type="general">General</button>
-                <button class="toggle-btn" data-type="general_contractor">General Contractor</button>
-                <button class="toggle-btn" data-type="electrician">Electrician</button>
-                <button class="toggle-btn" data-type="plumber">Plumber</button>
-            </div>
-        </div>
-
         <!-- Filter Controls -->
         <div class="filter-section">
             <h3>Filter Leads</h3>
             <div class="filter-controls">
+                <div class="filter-group">
+                    <label for="contractorType">Worker Type</label>
+                    <select id="contractorType" class="filter-select" multiple>
+                        <option value="">All Types</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
                 <div class="filter-group">
                     <label for="status">Status</label>
                     <select id="status" class="filter-select">
@@ -720,45 +716,6 @@
     background: #d3f9d8;
     color: #2b8a3e;
 }
-
-/* Contractor Type Toggle Styles */
-.contractor-toggles {
-    background: white;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
-}
-
-.toggle-group {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.toggle-btn {
-    padding: 0.75rem 1.5rem;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    background: white;
-    color: #495057;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-transform: capitalize;
-}
-
-.toggle-btn:hover {
-    background: #f8f9fa;
-    border-color: #ced4da;
-}
-
-.toggle-btn.active {
-    background: #e7f5ff;
-    border-color: #339af0;
-    color: #1864ab;
-}
 </style>
 
 <script>
@@ -780,7 +737,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize all components
     try {
         initializeFilters();
-        initializeContractorToggles();
         initializeViewToggle();
         
         // Fetch initial data
@@ -796,7 +752,7 @@ function initializeFilters() {
     console.log('Initializing filters...');
     
     // Add event listeners for filter changes
-    ['status', 'workType'].forEach(filterId => {
+    ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         if (select) {
             select.addEventListener('change', handleFilterChange);
@@ -849,7 +805,7 @@ function updateActiveFilters() {
     let hasActiveFilters = false;
 
     // Add filter tags for each category
-    ['status', 'workType'].forEach(filterId => {
+    ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         const selectedOptions = Array.from(select.selectedOptions);
         selectedOptions.forEach(option => {
@@ -911,8 +867,8 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    // Reset filter dropdowns
-    ['status', 'workType'].forEach(filterId => {
+    // Reset all filter dropdowns
+    ['contractorType', 'status', 'workType'].forEach(filterId => {
         const select = document.getElementById(filterId);
         select.selectedIndex = 0;
     });
@@ -920,12 +876,6 @@ function resetFilters() {
     // Reset value inputs
     document.getElementById('minValue').value = '';
     document.getElementById('maxValue').value = '';
-
-    // Reset contractor type toggles - set 'All' as active
-    document.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.querySelector('.toggle-btn[data-type="all"]').classList.add('active');
 
     // Reset filter state
     currentFilters = {
@@ -1074,15 +1024,21 @@ function updateUI(data) {
 
 function populateFilterOptions(data) {
     // Get unique values from permits
+    const contractorTypes = new Set();
     const statuses = new Set();
     const workTypes = new Set();
 
     Object.entries(data.categorized_permits).forEach(([contractorType, permits]) => {
+        contractorTypes.add(contractorType);
         permits.forEach(permit => {
             statuses.add(permit['Status']);
             workTypes.add(permit['Work Type']);
         });
     });
+
+    // Update contractor type dropdown
+    const contractorSelect = document.getElementById('contractorType');
+    updateSelectOptions(contractorSelect, Array.from(contractorTypes).sort(), currentFilters.contractorType);
 
     // Update status dropdown
     const statusSelect = document.getElementById('status');
@@ -1475,56 +1431,6 @@ function initializeViewToggle() {
         if (lastFetchedData) {
             updateContractorSections(lastFetchedData.categorized_permits, 'card');
         }
-    });
-}
-
-function initializeContractorToggles() {
-    console.log('Initializing contractor toggles...');
-    
-    const toggleGroup = document.querySelector('.toggle-group');
-    if (!toggleGroup) {
-        console.error('Toggle group not found');
-        return;
-    }
-
-    toggleGroup.addEventListener('click', (e) => {
-        const btn = e.target.closest('.toggle-btn');
-        if (!btn) return;
-
-        // Update active state
-        document.querySelectorAll('.toggle-btn').forEach(button => {
-            button.classList.remove('active');
-        });
-        btn.classList.add('active');
-
-        // Get the contractor type from the button
-        const contractorType = btn.dataset.type;
-        
-        // Map the toggle button types to the actual contractor types
-        const contractorTypeMap = {
-            'all': '',
-            'general': 'general',
-            'general_contractor': 'general contractor',
-            'electrician': 'electrician',
-            'plumber': 'plumber'
-        };
-
-        // Update filters based on the selected toggle
-        if (contractorType === 'all') {
-            currentFilters.contractorType = [];
-        } else {
-            const mappedType = contractorTypeMap[contractorType];
-            currentFilters.contractorType = [mappedType];
-        }
-
-        // Log the current state for debugging
-        console.log('Selected contractor type:', contractorType);
-        console.log('Mapped contractor type:', currentFilters.contractorType);
-        console.log('Current filters:', currentFilters);
-
-        // Reset to first page and fetch new data
-        currentPage = 1;
-        fetchLeadsData();
     });
 }
 </script>
