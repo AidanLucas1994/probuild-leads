@@ -40,6 +40,13 @@
             <h3>Filter Leads</h3>
             <div class="filter-controls">
                 <div class="filter-group">
+                    <label for="contractorType">Contractor Type</label>
+                    <select id="contractorType" class="filter-select" multiple>
+                        <option value="">All Types</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label for="status">Status</label>
                     <select id="status" class="filter-select">
                         <option value="">All Statuses</option>
@@ -943,13 +950,14 @@ function fetchLeadsData() {
     queryParams.append('page', currentPage);
     queryParams.append('limit', itemsPerPage);
     
-    // Add multi-select filter values
+    // Add contractor type filter
     if (currentFilters.contractorType.length > 0) {
         currentFilters.contractorType.forEach(type => {
             queryParams.append('contractor_type[]', type);
         });
     }
     
+    // Add other filters
     if (currentFilters.status.length > 0) {
         currentFilters.status.forEach(status => {
             queryParams.append('status[]', status);
@@ -965,6 +973,9 @@ function fetchLeadsData() {
     if (currentFilters.minValue) queryParams.append('min_value', currentFilters.minValue);
     if (currentFilters.maxValue) queryParams.append('max_value', currentFilters.maxValue);
 
+    // Log the query parameters for debugging
+    console.log('Query parameters:', queryParams.toString());
+
     // Show loading state
     showLoading();
 
@@ -976,8 +987,10 @@ function fetchLeadsData() {
             return response.json();
         })
         .then(data => {
+            // Log the response data for debugging
+            console.log('Received data:', data);
+            
             if (data.status === 'success') {
-                // Store the fetched data for view toggling
                 lastFetchedData = data;
                 updateUI(data);
             } else {
@@ -1017,6 +1030,9 @@ function showError(message) {
 }
 
 function updateUI(data) {
+    // Log the data being processed
+    console.log('Updating UI with data:', data);
+
     if (!data || !data.summary || !data.categorized_permits) {
         console.error('Invalid data structure received:', data);
         return;
@@ -1453,18 +1469,20 @@ function initializeContractorToggles() {
         // Get the contractor type from the button
         const contractorType = btn.dataset.type;
         
-        // Update the filters directly
-        currentFilters.contractorType = contractorType === 'general' ? [] : [contractorType];
+        // Clear existing filters
+        currentFilters.contractorType = [];
         
-        // Update the select element to match
-        const contractorSelect = document.getElementById('contractorType');
-        Array.from(contractorSelect.options).forEach(option => {
-            option.selected = option.value.toLowerCase() === contractorType.toLowerCase();
-        });
+        // Update filters based on the selected toggle
+        if (contractorType !== 'general') {
+            currentFilters.contractorType.push(contractorType);
+        }
 
-        // Update UI and fetch data
-        updateActiveFilters();
-        applyFilters();
+        // Log the current state for debugging
+        console.log('Selected contractor type:', contractorType);
+        console.log('Current filters:', currentFilters);
+
+        // Fetch new data
+        fetchLeadsData();
     });
 }
 
