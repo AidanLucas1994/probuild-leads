@@ -936,7 +936,10 @@ function fetchLeadsData() {
     // Add contractor type filter
     if (currentFilters.contractorType.length > 0) {
         currentFilters.contractorType.forEach(type => {
-            queryParams.append('contractor_type[]', encodeURIComponent(type));
+            // Convert to lowercase for consistency
+            const normalizedType = type.toLowerCase();
+            queryParams.append('contractor_type[]', normalizedType);
+            console.log('Adding contractor type filter:', normalizedType);
         });
     }
     
@@ -974,9 +977,12 @@ function fetchLeadsData() {
             console.log('Received data:', data);
             
             if (data.status === 'success') {
+                // Log the categorized permits for debugging
+                console.log('Categorized permits:', Object.keys(data.categorized_permits));
                 lastFetchedData = data;
                 updateUI(data);
             } else {
+                console.error('Error in response:', data.message);
                 showError(data.message || 'An error occurred while fetching data');
             }
         })
@@ -1166,10 +1172,14 @@ function createStatCard(title, value) {
 }
 
 function updateContractorSections(categorizedPermits, view = 'table') {
+    // Log the categorized permits being processed
+    console.log('Updating sections with permits:', Object.keys(categorizedPermits));
+    
     const sectionsContainer = document.getElementById('contractor-sections');
     sectionsContainer.innerHTML = '';
     
     Object.entries(categorizedPermits).forEach(([contractorType, permits]) => {
+        console.log(`Processing ${contractorType} with ${permits.length} permits`);
         if (permits.length > 0) {
             const section = view === 'table' 
                 ? createContractorSection(contractorType, permits)
@@ -1449,10 +1459,10 @@ function initializeContractorToggles() {
         // Map the toggle button types to the actual contractor types
         const contractorTypeMap = {
             'all': '',
-            'general': 'General',
-            'general_contractor': 'General Contractor',
-            'electrician': 'Electrician',
-            'plumber': 'Plumber'
+            'general': 'general',
+            'general_contractor': 'general contractor',
+            'electrician': 'electrician',
+            'plumber': 'plumber'
         };
 
         // Update filters based on the selected toggle
