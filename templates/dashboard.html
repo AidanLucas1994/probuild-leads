@@ -967,6 +967,7 @@ function createContractorSection(contractorType, permits) {
                 <th>Status</th>
                 <th>Work Type</th>
                 <th>Property Address</th>
+                <th>City</th>
                 <th>Value</th>
                 <th>Application Date</th>
                 <th>Actions</th>
@@ -980,6 +981,7 @@ function createContractorSection(contractorType, permits) {
                     <td><span class="status-badge status-${permit['Status'].toLowerCase()}">${permit['Status']}</span></td>
                     <td>${permit['Work Type']}</td>
                     <td>${permit['Property Address']}</td>
+                    <td>Kitchener, ON</td>
                     <td class="value-cell">${permit['Construction Value']}</td>
                     <td>${permit['Application Date']}</td>
                     <td>
@@ -1047,6 +1049,10 @@ function showPermitDetails(permit) {
             <div class="detail-item">
                 <div class="detail-label">Property Address</div>
                 <div class="detail-value">${permit['Property Address']}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">City</div>
+                <div class="detail-value">Kitchener, ON</div>
             </div>
             <div class="detail-item">
                 <div class="detail-label">Legal Description</div>
